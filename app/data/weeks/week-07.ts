@@ -13,6 +13,11 @@ export const week07: Week = {
         "Monorepo",
         "Design systems",
         "API layer design",
+        "Feature-based structure",
+        "Shared components",
+        "State management boundaries",
+        "Error boundaries",
+        "Scalability trade-offs",
       ],
       questions: [
         {
@@ -114,6 +119,176 @@ tokens ─▶ ui primitives ─▶ composite components ─▶ consumed by:
 **Governance** — a clear contribution model (who can add/change components), design+eng review, and an "is this reusable or app-specific?" gate so the library doesn't bloat.
 
 Why this matters: the hard parts are **theming without forking**, **versioning/migration** across many consumers, **a11y/i18n consistency**, and **performance** (tree-shaking). Calling those out signals real platform experience. Production angle: shared components across the Times Internet properties — tokens-based brand theming, Storybook + visual regression, semver + Changesets, logical properties for multilingual RTL/LTR. Follow-up: "How do you roll out a breaking change to N apps?" Deprecate -> codemod/migration guide -> major version -> consumers upgrade on their schedule (decoupled). "Avoid bundle bloat?" Per-component imports + tree-shaking + size budgets.`,
+        },
+        {
+          q: "How would you design an infinite scroll feed for a high-traffic content site?",
+          answer: `Start with the constraints: the feed must feel fast, avoid duplicate or missing items, preserve scroll stability, and not explode DOM or memory usage on long sessions.
+
+**1. API design**
+- use **cursor-based pagination**
+- return \`items\`, \`nextCursor\`, and \`hasMore\`
+- make requests idempotent and dedupe-able
+
+**2. Rendering strategy**
+- SSR/ISR the initial page for SEO and fast first paint
+- load more on the client with **IntersectionObserver**
+- use skeletons near the loading boundary
+
+**3. State**
+- store feed pages in a server-state layer like React Query
+- keep local UI state separate from fetched content state
+
+**4. Performance**
+- virtualize long lists
+- lazy-load images and embeds
+- abort stale requests
+- keep item heights reasonably stable to reduce layout shift
+
+**5. Reliability**
+- retry transient failures
+- show inline retry for page-fetch failures
+- log abandonment and fetch-error metrics
+
+~~~text
+SSR first page -> hydrate -> observe sentinel -> fetch next cursor -> append -> virtualize old rows
+~~~
+
+Senior points:
+- cursor pagination handles live inserts better than offset pagination
+- virtualization prevents a massive DOM
+- analytics and ad logic should not be tied to raw scroll events
+- preserve history/URL state if the feed is a primary navigation surface`,
+        },
+        {
+          q: "How would you design a multi-language website for scale?",
+          answer: `A scalable multi-language site needs locale to be a **first-class platform concern**, not an afterthought.
+
+Design dimensions:
+- **routing**: subpath, subdomain, or domain-per-locale
+- **content model**: UI strings separate from CMS content
+- **formatting**: dates, numbers, plurals, locale-aware formatting
+- **SEO**: \`hreflang\`, canonicals, localized metadata, localized sitemaps
+- **styling**: CSS logical properties and RTL/LTR support where needed
+- **caching**: locale-aware cache keys
+
+~~~text
+request /hi/... -> locale-aware layout -> localized strings + localized content -> locale-specific SEO output
+~~~
+
+Performance considerations:
+- lazy-load translation bundles
+- split messages by route/namespace
+- avoid sending all locale dictionaries to every page
+
+Interview one-liner:
+"A scalable i18n architecture separates translated UI strings from content, makes locale part of routing and caching, and bakes SEO and formatting into the platform layer."`,
+        },
+        {
+          q: "How would you architect a large React application?",
+          answer: `A strong answer should cover **ownership boundaries, shared layers, data flow, and failure isolation**.
+
+Recommended structure:
+- **feature-based folders** for domains like feed, article, search
+- **shared components** only for genuinely reusable UI
+- a typed **API layer** for requests, auth, retries, and normalization
+- clear **state management** boundaries: server state, local UI state, app-wide state
+- **error boundaries** around route sections or risky widgets
+
+~~~text
+app/
+  features/
+    feed/
+    article/
+    search/
+  shared/
+    ui/
+    hooks/
+    lib/
+  api/
+  state/
+~~~
+
+Senior reasoning:
+- keep business logic out of JSX-heavy components
+- colocate feature code, but avoid duplicating platform utilities
+- separate server state from UI state to prevent store bloat
+- enforce conventions with linting, docs, and reviews
+
+Interview one-liner:
+"Large React apps scale when features are the primary unit of ownership, shared code stays intentionally small, server state is distinct from UI state, and failure/performance boundaries are designed early."`,
+        },
+        {
+          q: "How would you design a notification system in a frontend application?",
+          answer: `Think of notifications as **transport + state + presentation**.
+
+Core pieces:
+- event source: websocket, SSE, polling, or local app events
+- normalized notification store
+- presentation surfaces: toast, badge count, inbox panel
+- read/unread, dedupe, and expiry rules
+
+~~~text
+event source -> notification service/store -> badge count + inbox + transient toast
+~~~
+
+Design choices:
+- keep transport concerns separate from UI rendering
+- support optimistic mark-as-read
+- prioritize notifications by severity/type
+- throttle noisy sources so the UI stays usable
+
+Senior point:
+"The hard part is not showing a toast. It is designing delivery, deduplication, unread state, and multiple presentation layers without coupling every feature directly to notification UI."`,
+        },
+        {
+          q: "How would you design a dashboard that handles 100k+ records without becoming slow?",
+          answer: `The key is simple: **do not fetch, sort, or render all 100k records on the client at once**.
+
+Architecture:
+- server-side filtering, sorting, and pagination
+- separate aggregate endpoints for summary widgets
+- virtualized table/list rendering
+- debounced filters and search
+- progressive drill-down instead of loading every detail upfront
+
+~~~text
+filters -> API query params -> paged response -> virtualized table -> drill-down views
+~~~
+
+Important frontend choices:
+- cache query results by filter set
+- background-fetch the next page when useful
+- use transitions/deferred updates for expensive filter changes
+- move export/report generation to async backend jobs
+
+Interview one-liner:
+"A 100k-record dashboard stays fast by pushing heavy data work to the backend, rendering only the visible slice on the frontend, and separating summary views from detailed exploration."`,
+        },
+        {
+          q: "How do you use React Suspense in a real application architecture?",
+          answer: `Suspense works best as an **intentional async boundary**, not a blanket loading wrapper.
+
+Good patterns:
+- wrap slower subtrees, not the whole page
+- keep fallbacks layout-stable
+- pair Suspense with Error Boundaries
+- use it with streaming, lazy loading, or supported data-fetching integrations
+
+~~~jsx
+<ErrorBoundary fallback={<ErrorCard />}>
+  <Suspense fallback={<RecommendationsSkeleton />}>
+    <Recommendations />
+  </Suspense>
+</ErrorBoundary>
+~~~
+
+Architectural value:
+- the shell can render immediately
+- slow widgets can load independently
+- one slow dependency does not block the entire route
+
+Interview one-liner:
+"I use Suspense as a loading boundary around isolated slow subtrees so the main shell renders immediately and async modules reveal progressively."`,
         },
       ],
       tip: "Structure your answer: requirements → high-level design → component breakdown → performance → monitoring.",

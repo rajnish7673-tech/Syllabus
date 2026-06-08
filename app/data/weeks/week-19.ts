@@ -548,5 +548,97 @@ Why it matters: alert fatigue causes **missed real incidents** — designing ale
       rajnishAngle:
         "Times Internet SLOs for page load time and error rate — what thresholds trigger on-call for your team.",
     },
+    {
+      title: "Senior Ownership & Delivery",
+      subtopics: [
+        "Production issue storytelling",
+        "Task estimation",
+        "Engineering quality",
+        "Technical debt management",
+        "Decision-making under constraints",
+      ],
+      questions: [
+        {
+          q: "Tell me about a production issue you solved.",
+          answer: `Use a concise **STAR** structure, but keep the emphasis on technical judgment.
+
+Good answer flow:
+- **Situation**: what broke and what the user/business impact was
+- **Task**: what you personally owned
+- **Action**: how you investigated, mitigated, fixed, and verified
+- **Result**: measurable outcome and the prevention step added afterward
+
+What interviewers want to hear:
+- you quantified impact
+- you mitigated first when needed
+- you used data, not guesswork
+- you added a guardrail so the issue class does not repeat
+
+Strong one-liner:
+"I focus on impact, mitigation, root cause, and prevention, not just the bug fix itself."`,
+        },
+        {
+          q: "How do you estimate tasks realistically?",
+          answer: `I estimate by breaking work into **scope, unknowns, dependencies, implementation, and validation** instead of guessing one large number.
+
+My approach:
+- confirm acceptance criteria
+- split work into design, coding, testing, rollout, and cleanup
+- surface unknowns separately
+- call out cross-team dependencies
+- give a range when uncertainty is real
+
+~~~text
+estimate = implementation + integration + validation + rollout + risk buffer
+~~~
+
+Strong interview line:
+"I avoid false precision. I break work down, separate known effort from unknown risk, and explain the assumptions behind the estimate."`,
+        },
+        {
+          q: "How do you improve engineering quality in a frontend team?",
+          answer: `I improve quality by making the safest path the easiest path.
+
+That usually means:
+- strong code review standards
+- linting, typing, and CI checks
+- shared architecture/component conventions
+- production observability
+- post-mortems that create reusable guardrails
+
+Quality is broader than tests alone. It also includes:
+- maintainability
+- performance discipline
+- rollout safety
+- debugging visibility
+- consistency across the team
+
+Interview one-liner:
+"Engineering quality improves when good defaults, automation, observability, and shared standards reduce the number of mistakes a developer can make in the first place."`,
+        },
+        {
+          q: "How do you manage technical debt without blocking delivery?",
+          answer: `I manage technical debt by prioritizing it by **interest rate**, not by guilt.
+
+My approach:
+- classify debt by impact on speed, reliability, performance, or security
+- fix high-interest debt that repeatedly slows delivery or causes incidents
+- pay down small debt opportunistically during nearby feature work
+- give larger systemic debt its own scoped initiative
+- document intentionally deferred debt instead of pretending it does not exist
+
+~~~text
+high-interest debt -> fix proactively
+low-impact debt -> track and defer intentionally
+~~~
+
+Strong interview line:
+"Not all debt deserves equal urgency. I prioritize the debt that taxes every future change or creates operational risk, and I avoid turning debt discussions into an unbounded cleanup wishlist."`,
+        },
+      ],
+      tip: "For senior interview questions, give a framework first, then anchor it with a real example.",
+      rajnishAngle:
+        "Use your own production stories here: performance regressions, stream issues, deploy rollbacks, and the guardrails you added afterward.",
+    },
   ],
 };
