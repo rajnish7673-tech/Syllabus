@@ -812,6 +812,10 @@ The "why": \`Object.create\` is the purest expression of prototypal inheritance 
       title: "Data Types & Type Conversions",
       subtopics: [
         "Primitive vs reference types",
+        "Equality semantics: ==, ===, Object.is",
+        "Shallow copy vs deep copy",
+        "Object/array destructuring",
+        "Rest parameters vs spread syntax",
         "typeof quirks",
         "Truthy/falsy values",
         "Implicit coercion",
@@ -872,6 +876,148 @@ Important quirks to mention:
 - functions are callable objects, so \`typeof fn === "function"\`
 
 Why it matters: this explains mutation bugs, React state update mistakes, shallow vs deep copy issues, and why equality behaves differently for objects. Follow-up: "How do you detect arrays?" \`Array.isArray(x)\`. "How do you compare objects?" By reference unless you write a deep comparison.`,
+        },
+        {
+          q: "What is the difference between shallow copy and deep copy in JavaScript?",
+          answer: `A **shallow copy** copies only the **top level** of an object/array. Nested objects are still shared by reference. A **deep copy** recursively copies nested structures too, so the clone does not share inner references with the original.
+
+Shallow copy examples:
+
+~~~js
+const original = {
+  name: "Raj",
+  address: { city: "Pune" },
+};
+
+const shallow = { ...original }; // or Object.assign({}, original)
+shallow.name = "Aman";
+shallow.address.city = "Mumbai";
+
+console.log(original.name); // "Raj"     top-level primitive was copied
+console.log(original.address.city); // "Mumbai" nested object is SHARED
+~~~
+
+~~~
+shallow copy:
+  original ─▶ { name: "Raj", address ─┐ }
+  shallow  ─▶ { name: "Raj", address ─┘ }  same nested object
+~~~
+
+Deep copy means nested references are also cloned:
+
+~~~js
+const original = {
+  name: "Raj",
+  address: { city: "Pune" },
+};
+
+const deep = structuredClone(original);
+deep.address.city = "Mumbai";
+
+console.log(original.address.city); // "Pune"
+~~~
+
+~~~
+deep copy:
+  original ─▶ { address ─▶ { city: "Pune" } }
+  deep     ─▶ { address ─▶ { city: "Pune" } }  separate nested object
+~~~
+
+Common interview points:
+- spread (\`{...obj}\`) and array spread (\`[...arr]\`) are **shallow**
+- \`Object.assign()\` is also **shallow**
+- \`JSON.parse(JSON.stringify(obj))\` is a naive deep-copy trick but loses Dates, Maps, Sets, functions, \`undefined\`, and breaks on circular references
+- **\`structuredClone()\`** is the modern built-in deep clone for many cases
+
+Why it matters: this is a classic interview topic because it explains a huge class of state-mutation bugs in React and JavaScript apps. The senior answer usually ties it back to references: "A shallow copy duplicates the outer container, not the nested objects." Follow-up: "How do you clone nested React state safely?" Copy every changed level manually, use \`structuredClone\` carefully, or use Immer when appropriate.`,
+        },
+        {
+          q: "Explain == vs === vs Object.is. What edge cases are important in interviews?",
+          answer: `These comparison mechanisms look similar, but they follow different rules:
+
+- \`==\` does **type coercion**
+- \`===\` compares without coercion
+- \`Object.is()\` is mostly like strict equality, but handles a few edge cases differently
+
+~~~js
+0 == false; // true
+0 === false; // false
+
+NaN === NaN; // false
+Object.is(NaN, NaN); // true
+
++0 === -0; // true
+Object.is(+0, -0); // false
+~~~
+
+Important interview traps:
+- \`null == undefined\` is true, but \`null === undefined\` is false
+- arrays/objects compare by **reference**, not by structure
+- loose equality can create surprising results because coercion rules are involved
+
+~~~js
+[] == false; // true
+"" == 0; // true
+{} === {}; // false
+[] === []; // false
+~~~
+
+Best practice:
+- use \`===\` by default
+- use \`Object.is\` when you specifically care about \`NaN\` or the \`+0\` vs \`-0\` distinction
+- avoid \`==\` unless you intentionally want coercion and can explain it
+
+Strong interview one-liner:
+"Loose equality coerces, strict equality does not, and \`Object.is\` behaves like strict equality except it treats \`NaN\` as equal to itself and distinguishes \`+0\` from \`-0\`."`,
+        },
+        {
+          q: "How do destructuring, rest, and spread work in JavaScript?",
+          answer: `These are related syntax features, but each solves a different problem.
+
+- **Destructuring** extracts values from arrays or objects
+- **Rest** gathers remaining values into a new array/object
+- **Spread** expands an array/object into individual values or entries
+
+~~~js
+const user = { name: "Raj", role: "Frontend", city: "Pune" };
+const { name, role } = user; // object destructuring
+
+const numbers = [10, 20, 30, 40];
+const [first, ...others] = numbers; // array destructuring + rest
+
+const clone = { ...user }; // object spread
+const merged = [...numbers, 50]; // array spread
+~~~
+
+Common interview points:
+- spread creates a **shallow copy**, not a deep copy
+- rest must appear at the end
+- destructuring supports renaming and default values
+
+~~~js
+const { name: userName, theme = "light" } = user;
+
+function sum(...values) {
+  return values.reduce((a, b) => a + b, 0);
+}
+~~~
+
+Core mental model:
+- destructuring = pull values out
+- rest = collect leftovers
+- spread = expand values out
+
+~~~js
+function greet(a, b) {
+  console.log(a, b);
+}
+
+const names = ["A", "B"];
+greet(...names); // spread at call-site
+~~~
+
+Interview one-liner:
+"Destructuring extracts, rest collects, and spread expands. Spread is convenient for copying and merging, but it only copies one level deep."`,
         },
         {
           q: "How does type conversion work in JavaScript? Implicit vs explicit coercion?",

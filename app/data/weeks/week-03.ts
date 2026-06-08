@@ -202,6 +202,45 @@ const onPick = useCallback((x) => setSel(x), []); // stable -> Child won't re-re
 
 Follow-up: "useCallback with no deps and stale closure?" An empty-deps callback captures the first render's values — use the updater form or include deps. "Difference from useRef for stability?" useRef gives a mutable container, not a memoized value; different tool.`,
         },
+        {
+          q: "How do you design a good custom hook in React, and what mistakes do interviewers look for?",
+          answer: `A custom hook extracts **reusable stateful logic** into a function. It is for sharing behavior, not for rendering UI.
+
+~~~jsx
+function useDebouncedValue(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+
+  return debounced;
+}
+~~~
+
+What makes a hook well-designed:
+- it starts with \`use\`
+- it still follows the Rules of Hooks
+- it exposes a small predictable API
+- it hides effect setup, cleanup, and repeated logic cleanly
+
+Good design principles:
+- accept explicit inputs instead of depending on hidden globals
+- return only what callers actually need
+- keep side effects predictable
+- avoid leaking implementation details
+
+Common interview mistakes:
+- calling hooks conditionally inside the custom hook
+- mixing JSX rendering with hook logic
+- returning unstable objects/functions carelessly
+- missing dependencies and creating stale closure bugs
+- doing too many unrelated jobs in one hook
+
+Strong interview answer:
+"I treat a custom hook like a small internal API. It should share stateful behavior, have explicit inputs, predictable outputs, and proper cleanup without coupling callers to internal implementation details."`,
+        },
       ],
       tip: "Know the rules of hooks cold. Senior candidates are expected to know the 'why', not just the 'what'.",
       rajnishAngle:

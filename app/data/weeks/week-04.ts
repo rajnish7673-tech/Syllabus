@@ -103,7 +103,14 @@ Why it matters: this is the lever for performance — moving interactivity to sm
     },
     {
       title: "App Router & React Server Components",
-      subtopics: ["Server vs client components", "Streaming & Suspense", "Server Actions", "Data fetching patterns"],
+      subtopics: [
+        "Server vs client components",
+        "Streaming & Suspense",
+        "Server Actions",
+        "Data fetching patterns",
+        "App Router file conventions",
+        "Navigation primitives",
+      ],
       questions: [
         {
           q: "What is the difference between a Server Component and a Client Component?",
@@ -218,10 +225,149 @@ Trade-offs / cautions: actions are POST endpoints under the hood — apply **aut
 
 Production angle: comment posting, newsletter signup, save/bookmark — Server Actions that write + \`revalidateTag('comments')\`, no bespoke API routes. Follow-up: "How is this different from an API route?" Less boilerplate, type-safe call site, automatic serialization, and form/revalidation integration — but for public/third-party consumers or non-Next clients you still want real API routes.`,
         },
+        {
+          q: "What are the key App Router file conventions, and when do you use each one?",
+          answer: `In the App Router, special file names control route behavior. Interviewers ask this because it shows whether you understand how Next.js composes route segments.
+
+Core conventions:
+- \`page.tsx\` -> route UI
+- \`layout.tsx\` -> shared persistent wrapper
+- \`template.tsx\` -> wrapper that remounts on navigation
+- \`loading.tsx\` -> segment-level loading fallback
+- \`error.tsx\` -> segment error boundary UI
+- \`not-found.tsx\` -> missing resource UI
+
+~~~text
+app/
+  dashboard/
+    layout.tsx
+    page.tsx
+    loading.tsx
+    error.tsx
+    not-found.tsx
+~~~
+
+Key differences:
+- \`layout.tsx\` preserves state across child navigations
+- \`template.tsx\` remounts, so it is useful when fresh effects/state are desired
+- \`loading.tsx\` works with Suspense and streaming
+- \`error.tsx\` handles recoverable route-segment failures
+
+Interview one-liner:
+"App Router uses file conventions as framework primitives: page renders content, layout/template wrap segments, loading handles Suspense fallback, error handles failures, and not-found handles missing resources."`,
+        },
+        {
+          q: "How do Link, useRouter, redirect, and notFound differ in Next.js navigation?",
+          answer: `These all relate to navigation, but they operate at different layers.
+
+- \`<Link>\` is the default declarative navigation primitive in UI
+- \`useRouter()\` is for imperative navigation in client components
+- \`redirect()\` is server-side navigation control flow
+- \`notFound()\` aborts rendering and shows the nearest \`not-found.tsx\`
+
+~~~jsx
+import Link from "next/link";
+
+<Link href="/articles/react">Read article</Link>
+~~~
+
+~~~jsx
+'use client';
+import { useRouter } from 'next/navigation';
+
+const router = useRouter();
+router.push('/dashboard');
+router.refresh();
+~~~
+
+~~~jsx
+import { redirect, notFound } from 'next/navigation';
+
+if (!session) redirect('/login');
+if (!article) notFound();
+~~~
+
+Best practice:
+- prefer \`Link\` for normal navigation because it supports prefetching
+- use \`useRouter\` when navigation depends on client-side events
+- use \`redirect\`/\`notFound\` on the server for auth checks and resource validation
+
+Interview one-liner:
+"Link is declarative, useRouter is imperative on the client, redirect controls server-side navigation, and notFound renders missing-state UI."`,
+        },
       ],
       tip: "RSC = zero JS sent to client for that component. This is the key mental model.",
       rajnishAngle:
         "Your RSC stream corruption debugging work is a killer story for deep Next.js knowledge.",
+    },
+    {
+      title: "Route Handlers & Middleware",
+      subtopics: [
+        "route.ts handlers",
+        "HTTP methods in App Router",
+        "NextRequest and NextResponse",
+        "Middleware use cases",
+        "Auth, rewrites, and redirects",
+      ],
+      questions: [
+        {
+          q: "What is a route handler in the App Router, and how is it different from a page?",
+          answer: `A route handler is defined in \`route.ts\` and handles HTTP requests directly. A \`page.tsx\` returns React UI, while a route handler returns a web response.
+
+~~~ts
+export async function GET() {
+  return Response.json({ ok: true });
+}
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  return Response.json({ saved: body });
+}
+~~~
+
+Key differences:
+- \`page.tsx\` is for route rendering
+- \`route.ts\` is for GET/POST/PUT/DELETE style handlers
+- route handlers are useful for APIs, webhooks, uploads, and integrations
+
+Interview one-liner:
+"Pages render UI, route handlers return HTTP responses. They belong to different parts of the request lifecycle."`,
+        },
+        {
+          q: "When should you use Next.js middleware, and what should you avoid doing in it?",
+          answer: `Middleware runs early in the request pipeline, so it is useful for lightweight interception such as auth redirects, rewrites, locale detection, or adding headers.
+
+~~~ts
+import { NextResponse } from "next/server";
+
+export function middleware(request: Request) {
+  const url = new URL(request.url);
+  if (url.pathname.startsWith("/admin")) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+  return NextResponse.next();
+}
+~~~
+
+Good use cases:
+- protecting routes
+- redirecting legacy URLs
+- locale or region based routing
+- request rewriting and header injection
+
+Avoid:
+- heavy database queries
+- long-running business logic
+- large response generation
+
+Why: middleware should stay fast because it can affect every matching request before the main route logic even starts.
+
+Interview one-liner:
+"Middleware is for lightweight request-time control like auth, redirects, and rewrites. Keep it thin and avoid expensive work."`,
+        },
+      ],
+      tip: "Pages render UI, route handlers serve HTTP, and middleware intercepts requests early.",
+      rajnishAngle: "",
     },
     {
       title: "Caching in Next.js",
