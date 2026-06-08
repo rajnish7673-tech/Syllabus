@@ -2,7 +2,7 @@ import type { Week } from "../types";
 
 export const week18: Week = {
   week: 18,
-  theme: "JavaScript Advanced Patterns",
+  theme: "Advanced Patterns",
   color: "#C084FC",
   topics: [
     {

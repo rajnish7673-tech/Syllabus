@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week04: Week = {
-  week: 4,
+  week: 7,
   theme: "Next.js & SSR Architecture",
   color: "#8B5CF6",
   topics: [

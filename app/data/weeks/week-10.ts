@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week10: Week = {
-  week: 10,
+  week: 8,
   theme: "Web Performance Engineering",
   color: "#F43F5E",
   topics: [
@@ -717,6 +717,103 @@ Why it matters: it's the standard solution for large lists/feeds and a frequent 
       tip: "Layout thrashing = reading then writing DOM in a loop, forcing multiple reflows. Batch reads before writes.",
       rajnishAngle:
         "Infinite scroll article feeds at NBT — virtualization to avoid DOM bloat on long sessions.",
+    },
+    {
+      title: "Module Systems & Bundlers",
+      subtopics: [
+        "ESM vs CommonJS",
+        "Bundling vs transpiling",
+        "Webpack / Vite / Turbopack",
+        "Code splitting boundaries",
+        "Source maps",
+      ],
+      questions: [
+        {
+          q: "What is the difference between CommonJS and ES Modules?",
+          answer: `**CommonJS (CJS)** uses \`require()\` and \`module.exports\`; **ES Modules (ESM)** use \`import\` and \`export\`.
+
+~~~js
+// CommonJS
+const utils = require("./utils");
+module.exports = { sum };
+
+// ESM
+import { sum } from "./utils.js";
+export { sum };
+~~~
+
+Key differences:
+- **ESM is static**: imports/exports are analyzable at build time
+- **CJS is dynamic**: \`require()\` can happen conditionally at runtime
+- ESM enables tree shaking much more effectively
+- ESM is the browser-native module format
+
+~~~
+CommonJS -> runtime-oriented, dynamic
+ESM      -> standard, static, bundler-friendly
+~~~
+
+Why it matters in frontend: modern bundlers prefer ESM graphs because static imports make tree shaking and optimization far easier. Good interview line: "CommonJS is flexible at runtime; ESM is more analyzable at build time, which is why bundlers prefer it." Follow-up: "Can Node use ESM?" Yes, modern Node supports it, but interop rules with CommonJS matter.`,
+        },
+        {
+          q: "What is the difference between transpiling, bundling, and minification?",
+          answer: `These are different build steps:
+
+- **Transpiling**: convert source syntax into another JavaScript form
+- **Bundling**: turn a module graph into output chunks/files
+- **Minification**: shrink the final output by simplifying and compressing code
+
+~~~text
+TypeScript/JSX source
+  -> transpile  (TS/JSX -> plain JS)
+  -> bundle     (many modules -> chunks/files)
+  -> minify     (smaller production output)
+~~~
+
+Examples:
+- Babel / SWC / TypeScript compiler -> transpiling
+- Webpack / Vite / Turbopack / Rollup -> bundling
+- Terser / SWC minify / esbuild minify -> minification
+
+Why the distinction matters:
+- code can be transpiled without bundling
+- dev mode may bundle without aggressive minification
+- a single tool may do multiple jobs, but the concepts are still separate
+
+Follow-up: "What about polyfills?" Polyfills are related to runtime compatibility, but separate from transpiling — transpiling changes syntax, polyfills add missing APIs.`,
+        },
+        {
+          q: "What does a bundler actually do, and how do Webpack, Vite, and Turbopack differ at a high level?",
+          answer: `A bundler starts from one or more **entry points**, follows the **import graph**, transforms files as needed, and emits optimized output chunks for the browser.
+
+At a high level it does:
+1. resolve imports
+2. transform file types (TS, JSX, CSS, assets)
+3. build the dependency graph
+4. split output into chunks
+5. optimize for dev or production
+
+~~~
+entry file
+  -> follow imports
+  -> transform modules/assets
+  -> build graph
+  -> emit chunks
+~~~
+
+High-level mental model of popular tools:
+- **Webpack**: highly configurable, plugin-heavy, long-time standard
+- **Vite**: very fast dev workflow using native ESM in development
+- **Turbopack**: Rust-based next-gen bundler focused on fast incremental builds, especially in Next.js
+
+The senior answer doesn't need every internal detail; it should show that bundlers solve dependency graphing, transformation, chunking, and optimization.
+
+Why it matters: understanding bundlers helps when debugging source maps, alias resolution, code splitting, and unexpected bundle growth. Follow-up: "Why is Vite dev fast?" Because it serves modules on demand with ESM instead of prebundling the whole app up front.`,
+        },
+      ],
+      tip: "Keep the mental model simple: transpile syntax, bundle modules, minify output.",
+      rajnishAngle:
+        "This is useful when explaining bundle size regressions, tree shaking behavior, and why certain imports unexpectedly bloat the app.",
     },
   ],
 };

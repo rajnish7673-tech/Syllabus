@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week08: Week = {
-  week: 8,
+  week: 13,
   theme: "Nginx Caching & Server Layer",
   color: "#14B8A6",
   topics: [

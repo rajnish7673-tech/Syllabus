@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week02: Week = {
-  week: 2,
+  week: 4,
   theme: "Promises, Async/Await & API Handling",
   color: "#FBBF24",
   topics: [

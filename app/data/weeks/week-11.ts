@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week11: Week = {
-  week: 11,
+  week: 10,
   theme: "Browser DevTools Mastery",
   color: "#A78BFA",
   topics: [

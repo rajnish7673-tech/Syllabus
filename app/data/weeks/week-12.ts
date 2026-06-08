@@ -1,7 +1,35 @@
-import type { Week } from "../types";
+import type { QuestionPriority, Week } from "../types";
 
-export const week12: Week = {
-  week: 12,
+const week12QuestionPriorities: Record<string, QuestionPriority[]> = {
+  "Arrays & Strings": ["High", "High", "High", "High", "Medium", "High", "High"],
+  "Linked Lists": ["High", "High", "High", "High", "High", "Medium"],
+  "Stacks & Queues": ["High", "Medium", "High", "Medium"],
+  "Trees & Binary Search": ["Medium", "High", "High", "High"],
+  "Hashmaps & Sets": ["High", "High", "Medium", "High"],
+  "JavaScript Array & Object Manipulation": ["Medium", "Medium", "Medium", "High", "Medium"],
+  "Recursion & Dynamic Programming": ["High", "High", "Medium", "Medium"],
+  Graphs: ["High", "Medium", "Medium", "High"],
+  "Frontend Machine Coding": ["High", "High", "High", "High", "Medium", "High"],
+};
+
+function withQuestionPriorities(week: Week): Week {
+  return {
+    ...week,
+    topics: week.topics.map((topic) => {
+      const priorities = week12QuestionPriorities[topic.title] ?? [];
+      return {
+        ...topic,
+        questions: topic.questions.map((qa, index) => ({
+          ...qa,
+          priority: priorities[index],
+        })),
+      };
+    }),
+  };
+}
+
+export const week12: Week = withQuestionPriorities({
+  week: 17,
   theme: "Competitive Coding & DSA",
   color: "#FF6B35",
   topics: [
@@ -72,6 +100,79 @@ The key optimization: store each char's **last index** so on a duplicate you can
 Variants: with a plain **Set** you shrink left one step at a time (\`while set.has(c) { set.delete(s[left++]) }\`) — also O(n) amortized. Edge cases: empty string (0), all same chars (1), all unique (length).
 
 Complexity: **O(n) time, O(min(n, charset)) space.** This is a canonical **variable-size sliding window** problem — interviewers use it to test whether you can maintain a valid window with two pointers. Follow-up: "Return the substring" -> track the best window's start. "Fixed-size window?" Different template (slide a fixed k). Always ask: fixed or variable window?`,
+        },
+        {
+          q: "Product of array except self — solve it in O(n) without division.",
+          answer: `Return an array where each output index is the product of **all other elements** except itself, without using division. The clean solution is **prefix products + suffix products**: in the first pass store the product of everything to the **left** of each index; in the second pass multiply by the product of everything to the **right**. This gives **O(n) time** and **O(1) extra space** if the output array doesn't count.
+
+~~~js
+function productExceptSelf(nums) {
+  const res = new Array(nums.length).fill(1);
+
+  let prefix = 1;
+  for (let i = 0; i < nums.length; i++) {
+    res[i] = prefix;          // product of everything LEFT of i
+    prefix *= nums[i];
+  }
+
+  let suffix = 1;
+  for (let i = nums.length - 1; i >= 0; i--) {
+    res[i] *= suffix;         // multiply by everything RIGHT of i
+    suffix *= nums[i];
+  }
+
+  return res;
+}
+// [1,2,3,4] -> [24,12,8,6]
+~~~
+
+~~~
+left pass stores:
+  nums: [1, 2, 3, 4]
+  res : [1, 1, 2, 6]
+
+right pass multiplies suffix:
+  suffixes seen from right: 1, 4, 12, 24
+  final res -> [24, 12, 8, 6]
+~~~
+
+Why it works: for each index \`i\`, the answer is \`(product of everything before i) * (product of everything after i)\`. The first pass fills the "before" part, the second pass folds in the "after" part. This avoids division, so zeros are handled correctly too.
+
+Edge cases interviewers love: **one zero** (only that position gets the non-zero product, all others become 0), **multiple zeros** (everything is 0), negatives (sign flips naturally work), and large products (clarify integer constraints). The common mistake is trying to divide totalProduct / nums[i], which breaks on zeros and violates the prompt.
+
+Complexity: **O(n) time, O(1) extra space** aside from the output. This is one of the most common prefix/suffix interview problems. Follow-up: "Can you do it with separate prefix/suffix arrays?" Yes, O(n) extra space. "Why not division?" Prompt forbids it and zeros make it incorrect.`,
+        },
+        {
+          q: "Best time to buy and sell stock — max profit with one transaction.",
+          answer: `Given daily stock prices, choose **one buy day** and **one later sell day** to maximize profit. The optimal pattern is a single pass tracking the **minimum price seen so far** and the **best profit** if you sold today. **O(n) time, O(1) space.**
+
+~~~js
+function maxProfit(prices) {
+  let minPrice = Infinity;
+  let best = 0;
+
+  for (const price of prices) {
+    minPrice = Math.min(minPrice, price);   // best day to have bought so far
+    best = Math.max(best, price - minPrice); // sell today if it's good
+  }
+
+  return best;
+}
+// [7,1,5,3,6,4] -> 5  (buy at 1, sell at 6)
+~~~
+
+~~~
+scan left -> right:
+  keep cheapest buy seen so far
+  every new price asks: "if I sold TODAY, what's my profit?"
+  keep the maximum of those profits
+~~~
+
+Why it works: at each day, the best valid transaction ending today is "today's price minus the cheapest earlier day." You never need to check all pairs because the only thing that matters from the left side is the smallest value seen so far.
+
+Edge cases: strictly decreasing prices -> answer is **0** (don't trade), single day -> 0, repeated prices -> profit can stay 0. Clarify whether short selling is allowed; in the standard version it's **not**, so buy must happen before sell.
+
+This is a classic "running minimum + current candidate" pattern and appears constantly in interview prep lists because it tests whether you can collapse an O(n^2) brute-force pair search into one pass. Follow-up: "Unlimited transactions?" Greedy sum of every upward slope. "At most two transactions?" DP/state machine variant.`,
         },
         {
           q: "Find the intersection of two arrays without extra space.",
@@ -171,6 +272,46 @@ freq count:      O(n) time, O(1) space (fixed alphabet)  <- OPTIMAL
 
 Edge cases / clarifications: **length mismatch -> instantly false** (cheap early exit); case sensitivity (normalize if needed); spaces/punctuation (strip if "phrase anagram"); **Unicode** — \`charCode\`/array-of-26 assumes ASCII letters; for full Unicode use the Map (and consider code points / normalization for combined characters). Follow-up: "Group anagrams?" Use a sorted-key or freq-signature as a hash key (covered in the Hashmaps topic). "Why not always sort?" O(n log n) is fine but the freq count is strictly better and shows you reach for hashing on "same elements/frequencies" problems.`,
         },
+        {
+          q: "Merge overlapping intervals.",
+          answer: `Given intervals like \`[[1,3],[2,6],[8,10],[15,18]]\`, merge all overlapping ranges. The standard approach is **sort by start time**, then scan left to right building the merged output. **O(n log n)** from sorting, then a linear pass.
+
+~~~js
+function merge(intervals) {
+  if (intervals.length <= 1) return intervals;
+
+  intervals.sort((a, b) => a[0] - b[0]);
+  const merged = [intervals[0]];
+
+  for (let i = 1; i < intervals.length; i++) {
+    const [start, end] = intervals[i];
+    const last = merged[merged.length - 1];
+
+    if (start <= last[1]) {
+      last[1] = Math.max(last[1], end); // overlap -> extend the current merged range
+    } else {
+      merged.push([start, end]);        // disjoint -> start a new range
+    }
+  }
+
+  return merged;
+}
+// [[1,3],[2,6],[8,10],[15,18]] -> [[1,6],[8,10],[15,18]]
+~~~
+
+~~~
+sort first:
+  [1,3] [2,6] [8,10] [15,18]
+    2 <= 3  -> merge into [1,6]
+    8 > 6   -> start new interval
+~~~
+
+Why sorting is the key: once intervals are ordered by start time, any overlap relevant to the current interval can only happen with the **last merged interval**. Without sorting, you'd need much more bookkeeping.
+
+The overlap check is \`start <= lastEnd\` if touching endpoints count as overlapping. If the problem treats \`[1,4]\` and \`[4,5]\` as separate, the condition becomes \`start < lastEnd\`. Always clarify inclusive/exclusive endpoints.
+
+Complexity: **O(n log n) time, O(n) output space**. This is a very common sorting pattern question because it combines interval reasoning with a simple greedy scan. Follow-up: "Insert interval?" Same idea but you weave one interval into a sorted list. "Meeting rooms?" Sort starts/ends or use a heap.`,
+        },
       ],
       tip: "Sliding window = O(n) for contiguous subarray problems. Always ask: fixed or variable window size?",
       rajnishAngle:
@@ -267,6 +408,85 @@ function detectCycleStart(head) {
 ~~~
 
 Complexity: **O(n) time, O(1) space.** The alternative — a **hash set** of visited nodes — is O(n) time but O(n) space; Floyd's is preferred for the constant space. Edge cases: empty list, single node (cycle only if it points to itself), the \`fast && fast.next\` guard prevents null-deref. Follow-up: "Cycle length?" Once they meet, advance one pointer around until it returns. "Why +2 not +3?" Any faster speed works but +2 is simplest and guarantees no "skipping over" the meeting.`,
+        },
+        {
+          q: "Merge two sorted linked lists.",
+          answer: `Given two sorted linked lists, merge them into one sorted list by reusing the existing nodes. The cleanest iterative solution uses a **dummy head** plus a moving tail pointer. At each step, attach the smaller node and advance that list. **O(n + m) time, O(1) extra space.**
+
+~~~js
+function mergeTwoLists(l1, l2) {
+  const dummy = { next: null };
+  let tail = dummy;
+
+  while (l1 && l2) {
+    if (l1.val <= l2.val) {
+      tail.next = l1;
+      l1 = l1.next;
+    } else {
+      tail.next = l2;
+      l2 = l2.next;
+    }
+    tail = tail.next;
+  }
+
+  tail.next = l1 || l2; // append the remainder
+  return dummy.next;
+}
+~~~
+
+~~~
+dummy -> build result
+l1: 1 -> 3 -> 5
+l2: 2 -> 4 -> 6
+pick smaller each time -> 1 -> 2 -> 3 -> 4 -> 5 -> 6
+~~~
+
+Why the dummy node helps: it removes the special case for the very first node of the merged list. \`tail\` always points at the last merged node, so attaching the next smallest node is uniform every iteration.
+
+This is basically the merge step from merge sort, just on linked lists. Since the inputs are already sorted, you never need to look back or insert in the middle.
+
+Complexity: **O(n + m) time, O(1) extra space** if you relink existing nodes. Follow-up: "Recursive version?" Elegant but uses call stack. "Merge k sorted lists?" Usually a min-heap or divide-and-conquer.`,
+        },
+        {
+          q: "Add two numbers represented by linked lists.",
+          answer: `Each linked list stores a non-negative integer in **reverse digit order**, so \`2 -> 4 -> 3\` means 342. Add the two numbers the same way you do grade-school addition: walk both lists together, add corresponding digits plus a **carry**, and create result nodes as you go. **O(max(n, m)) time, O(max(n, m)) output space.**
+
+~~~js
+function addTwoNumbers(l1, l2) {
+  const dummy = { next: null };
+  let tail = dummy;
+  let carry = 0;
+
+  while (l1 || l2 || carry) {
+    const x = l1 ? l1.val : 0;
+    const y = l2 ? l2.val : 0;
+    const sum = x + y + carry;
+
+    carry = Math.floor(sum / 10);
+    tail.next = { val: sum % 10, next: null };
+    tail = tail.next;
+
+    if (l1) l1 = l1.next;
+    if (l2) l2 = l2.next;
+  }
+
+  return dummy.next;
+}
+// 2->4->3  +  5->6->4  =  7->0->8   (342 + 465 = 807)
+~~~
+
+~~~
+digit by digit:
+  2 + 5 = 7, carry 0
+  4 + 6 = 10 -> write 0, carry 1
+  3 + 4 + 1 = 8
+~~~
+
+The key interview detail is the loop condition: \`while (l1 || l2 || carry)\`. That final \`carry\` check handles cases like 999 + 1 = 1000, where you need one extra node after both lists end.
+
+Why linked lists are used here: you can stream through each number from least-significant digit to most-significant digit without reversing anything. If digits were stored in forward order, you'd either reverse the lists or use stacks.
+
+Complexity: **O(max(n, m)) time** and the result list takes **O(max(n, m)) space**. This is one of the most repeated linked-list interview questions because it checks pointer comfort, carry handling, and edge cases all at once. Follow-up: "Digits stored forward?" Reverse first or use stacks. "Can you modify in place?" Sometimes, but clarify whether mutating inputs is allowed.`,
         },
         {
           q: "Implement an LRU Cache using HashMap + Doubly Linked List.",
@@ -1067,7 +1287,7 @@ const state = {
       city: "Mumbai",
     },
   },
-};
+});
 
 const nextState = {
   ...state,
@@ -1898,4 +2118,4 @@ This is the **Observer/PubSub** pattern — the foundation of event systems (DOM
         "Debounce on search inputs, throttle on scroll handlers on NBT — you use these in production. Lead with that.",
     },
   ],
-};
+});

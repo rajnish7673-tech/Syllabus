@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week03: Week = {
-  week: 3,
+  week: 6,
   theme: "React Deep Dive",
   color: "#06B6D4",
   topics: [
@@ -319,7 +319,7 @@ Production angle: profiling an article feed under CPU throttling exposed that an
     },
     {
       title: "State Management",
-      subtopics: ["Context vs Redux", "Zustand/Jotai", "React Query / server state", "Derived state patterns"],
+      subtopics: ["Context vs Redux", "Zustand/Jotai", "React Query / server state", "Derived state patterns", "Reducer pattern", "Context performance"],
       questions: [
         {
           q: "When would you choose Context API over Redux?",
@@ -408,9 +408,192 @@ Why it's powerful: you get instant UI from cache (perceived speed), automatic fr
 
 Production angle: news feed with \`staleTime\` tuned per data type (short for breaking-news lists, longer for evergreen), \`invalidateQueries\` triggered on publish webhooks, refetch-on-focus so a returning reader sees fresh headlines. Follow-up: "How does this relate to HTTP/CDN caching?" It's an additional in-memory layer on the client; together with browser/CDN/Nginx caches it forms the multi-layer caching stack — React Query is the closest, app-aware layer.`,
         },
+        {
+          q: "When should you use useReducer instead of useState?",
+          answer: `Use **\`useState\`** for simple isolated values. Use **\`useReducer\`** when state transitions are more complex, when several fields change together, or when you want updates represented as named **actions**.
+
+~~~jsx
+function reducer(state, action) {
+  switch (action.type) {
+    case "change":
+      return { ...state, [action.field]: action.value };
+    case "reset":
+      return { name: "", email: "", errors: {} };
+    case "setErrors":
+      return { ...state, errors: action.errors };
+    default:
+      return state;
+  }
+}
+
+const [state, dispatch] = useReducer(reducer, {
+  name: "",
+  email: "",
+  errors: {},
+});
+~~~
+
+Why it helps:
+- keeps state logic centralized
+- makes multi-step updates explicit
+- works well for forms, wizards, and state machines
+
+~~~
+useState   -> simple field/value updates
+useReducer -> related transitions with clear action names
+~~~
+
+The senior framing: when you start passing many setters around or coordinating several related updates in one event, a reducer often improves readability and predictability. Follow-up: "Is useReducer basically local Redux?" Conceptually yes — reducer + action model, just scoped locally.`,
+        },
+        {
+          q: "What are the common Context performance pitfalls and how do you avoid them?",
+          answer: `The biggest Context pitfall is that **when the provider value changes, every consumer re-renders**. That makes Context fine for low-frequency global state, but risky for fast-changing shared state.
+
+Common mistakes:
+1. one giant context for unrelated concerns
+2. passing a new object literal as the provider value every render
+3. putting hot state like form keystrokes or mouse position into Context
+
+~~~jsx
+// ❌ new object each render -> all consumers re-render
+<AppContext.Provider value={{ user, theme, toggleTheme }}>
+  {children}
+</AppContext.Provider>
+~~~
+
+Better:
+
+~~~jsx
+const value = useMemo(() => ({ user, theme, toggleTheme }), [user, theme, toggleTheme]);
+<AppContext.Provider value={value}>{children}</AppContext.Provider>
+~~~
+
+Other fixes:
+- split contexts by concern
+- separate state and dispatch contexts
+- move hot state to selector-based tools like Zustand/Redux
+
+~~~
+one broad context   -> large re-render blast radius
+small focused ones  -> smaller, cheaper updates
+~~~
+
+Why it matters: many candidates know Context conceptually but miss its update model. Production angle: splitting a giant app context often removes avoidable list/feed re-renders. Follow-up: "Can Context replace Redux?" Sometimes, but not when you need fine-grained subscriptions at scale.`,
+        },
       ],
       tip: "Interviewers want to know you can choose the right tool. Context for global UI state, React Query for server data.",
       rajnishAngle: "",
+    },
+    {
+      title: "Forms & Validation",
+      subtopics: [
+        "Controlled vs uncontrolled inputs",
+        "Validation timing",
+        "Debounced async validation",
+        "File upload basics",
+        "Preventing double submit",
+      ],
+      questions: [
+        {
+          q: "What is the difference between controlled and uncontrolled form components in React?",
+          answer: `A **controlled input** gets its value from React state and updates via \`onChange\`. An **uncontrolled input** keeps its own state in the DOM, and you usually read it via a ref or on submit.
+
+~~~jsx
+// controlled
+const [name, setName] = useState("");
+<input value={name} onChange={(e) => setName(e.target.value)} />
+
+// uncontrolled
+const inputRef = useRef(null);
+<input ref={inputRef} defaultValue="Raj" />
+~~~
+
+Controlled inputs are best when:
+- validation/UI depends on the current value
+- React should own the source of truth
+
+Uncontrolled inputs are useful when:
+- the form is simple
+- you want lower state-management overhead
+- you're integrating with native form behavior or third-party code
+
+~~~
+controlled   -> React state is source of truth
+uncontrolled -> DOM input is source of truth
+~~~
+
+The senior answer is usually: use controlled inputs by default for rich app forms, but know uncontrolled inputs are valid and sometimes simpler. Follow-up: "Why does React warn about switching?" Because an input should not move from uncontrolled to controlled mid-lifecycle or vice versa.`,
+        },
+        {
+          q: "How would you structure validation in a real-world frontend form?",
+          answer: `A strong real-world form usually has **three layers** of validation:
+
+1. **client-side syntax/required checks** for instant UX
+2. **async validation** for rules like uniqueness
+3. **server-side final validation** as the source of truth
+
+~~~js
+function validate(values) {
+  const errors = {};
+  if (!values.email) errors.email = "Email is required";
+  else if (!/\\S+@\\S+\\.\\S+/.test(values.email)) errors.email = "Invalid email";
+  if (values.password.length < 8) errors.password = "Minimum 8 characters";
+  return errors;
+}
+~~~
+
+Good UX patterns:
+- avoid showing all errors before the user interacts
+- validate some fields on blur, not every keystroke
+- debounce expensive async checks
+- always show field-specific, actionable messages
+
+The key principle: **client validation improves UX, server validation enforces truth**. Never rely only on the client because requests can be forged and server rules may change.
+
+Why it matters: forms are one of the most common frontend interview areas because they combine state, UX, and API concerns. Follow-up: "Validate on change or blur?" Lightweight format checks can happen on change; noisier checks often feel better on blur or submit.`,
+        },
+        {
+          q: "How do you handle file uploads and prevent double-submit issues in a form?",
+          answer: `File uploads usually send **multipart/form-data**, commonly via a \`FormData\` object. To prevent double-submit issues, track a **pending/submitting** state and ignore or disable repeated submits while the request is in flight.
+
+~~~js
+async function handleSubmit(event) {
+  event.preventDefault();
+  if (isSubmitting) return;
+
+  setIsSubmitting(true);
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("title", title);
+
+    await fetch("/api/upload", {
+      method: "POST",
+      body: form,
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+}
+~~~
+
+Important notes:
+- don't manually set the multipart boundary header when using \`FormData\`
+- validate file type/size before uploading for faster feedback
+- show progress for large uploads when needed
+- disable or guard the submit button while pending
+
+~~~
+without submit guard -> duplicate requests possible
+with pending flag    -> second submit is ignored/disabled
+~~~
+
+Why it matters: this is a common interview scenario because it mixes form UX with real browser/network behavior. Follow-up: "How do you show upload progress?" Use XHR upload progress events or a higher-level upload library when progress feedback is important.`,
+        },
+      ],
+      tip: "Client-side validation is for UX; server-side validation is for truth. Mention both.",
+      rajnishAngle:
+        "Forms are a classic frontend interview area because they combine state, validation, and API coordination in one place.",
     },
     {
       title: "Error Boundaries & Suspense",

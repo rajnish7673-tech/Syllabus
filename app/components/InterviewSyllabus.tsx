@@ -442,6 +442,14 @@ export default function InterviewSyllabus() {
                       {topic.questions.map((qa, qi) => {
                         const aKey = `${activeWeek}-${ti}-${qi}`;
                         const isOpen = openAnswers.has(aKey);
+                        const priorityColors = {
+                          High: { bg: "#3F1D1D", fg: "#FCA5A5", border: "#7F1D1D" },
+                          Medium: { bg: "#3A2A12", fg: "#FCD34D", border: "#92400E" },
+                          Low: { bg: "#172534", fg: "#93C5FD", border: "#1D4ED8" },
+                        } as const;
+                        const priorityTone = qa.priority
+                          ? priorityColors[qa.priority]
+                          : null;
                         return (
                           <Fragment key={qi}>
                             <div
@@ -480,6 +488,23 @@ export default function InterviewSyllabus() {
                               >
                                 {qa.q}
                               </span>
+                              {priorityTone && (
+                                <span
+                                  style={{
+                                    fontSize: 10,
+                                    lineHeight: 1,
+                                    padding: "5px 7px",
+                                    borderRadius: 999,
+                                    background: priorityTone.bg,
+                                    color: priorityTone.fg,
+                                    border: `1px solid ${priorityTone.border}`,
+                                    flexShrink: 0,
+                                    marginTop: 1,
+                                  }}
+                                >
+                                  {qa.priority}
+                                </span>
+                              )}
                               <span
                                 style={{
                                   color: "#3A3A50",

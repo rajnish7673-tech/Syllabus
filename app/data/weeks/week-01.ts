@@ -465,8 +465,39 @@ Best short answer:
     },
     {
       title: "Event Loop, Microtasks & Macrotasks",
-      subtopics: ["Call stack", "Web APIs", "Task queue vs microtask queue", "Promise execution order"],
+      subtopics: ["Call stack", "Web APIs", "Task queue vs microtask queue", "Promise execution order", "Single-threaded runtime", "Blocking vs non-blocking"],
       questions: [
+        {
+          q: "Is JavaScript single-threaded or multi-threaded?",
+          answer: `The JavaScript **language execution model is single-threaded**: one **call stack**, one piece of JS running at a time, **run-to-completion**. That means if a function is executing, no other JS can interrupt it halfway on that same thread.
+
+~~~js
+console.log("start");
+while (true) {}   // blocks forever
+console.log("end"); // never reached
+~~~
+
+But the environment around JavaScript is **not** purely single-threaded. The browser/Node runtime has other systems working in parallel:
+- browser Web APIs (timers, network, DOM events)
+- rendering engine
+- libuv thread pool in Node
+- **Web Workers / Worker Threads** for actual parallel JS on separate threads
+
+~~~
+main JS thread:   one call stack, one task at a time
+browser/runtime:  timers, network, rendering, I/O happening outside that stack
+workers:          separate JS threads with separate event loops
+~~~
+
+So the precise senior answer is:
+- **JavaScript on the main thread is single-threaded**
+- but modern runtimes can use **multiple threads/processes around it**
+- and you can opt into real parallelism with **Web Workers** (browser) or **Worker Threads** (Node)
+
+Why people get confused: \`setTimeout\`, fetch, and DOM events feel "parallel," but the callback code still returns to the **single main JS thread** later via the event loop.
+
+Why it matters: this distinction is one of the most common JavaScript runtime interview questions. The high-signal answer is not just "single-threaded," but "single-threaded execution with concurrent runtime support and optional worker-based parallelism." Follow-up: "Can two pieces of JS run at the exact same time?" On the same main thread, no. In separate workers, yes.`,
+        },
         {
           q: "What is the difference between microtask and macrotask queues?",
           answer: `JS is single-threaded with an event loop that pulls work from two kinds of queues. The critical rule: after each macrotask (and after the current synchronous run-to-completion), the engine drains the *entire* microtask queue before rendering or taking the next macrotask.
@@ -552,6 +583,66 @@ console.log("0"); run(); console.log("3"); // 0, 1, 3, 2
 ~~~
 
 How to nail it in interviews: say out loud "sync runs to completion, then microtask queue fully drains, then one macrotask, repeat." Then walk the queues on paper. Production angle: INP optimization is literally about not blocking this loop — yielding so the browser can drain tasks and paint.`,
+        },
+        {
+          q: "What is blocking vs non-blocking JavaScript?",
+          answer: `**Blocking** code prevents the main thread from doing anything else until that work finishes. **Non-blocking** code lets the runtime continue handling other work and notifies you later when the result is ready.
+
+Blocking example:
+
+~~~js
+function heavyWork() {
+  const start = Date.now();
+  while (Date.now() - start < 3000) {} // busy wait 3 seconds
+}
+
+console.log("A");
+heavyWork();
+console.log("B");
+~~~
+
+The UI/event loop is stuck during \`heavyWork()\`. No clicks, no paint, no timers can run until it finishes.
+
+Non-blocking example:
+
+~~~js
+console.log("A");
+setTimeout(() => {
+  console.log("B");
+}, 3000);
+console.log("C");
+// A, C, then later B
+~~~
+
+Here the timer is handled by the runtime, and the callback returns later through the event loop without blocking the current thread.
+
+~~~
+blocking:
+  JS starts work -> main thread busy -> everything waits
+
+non-blocking:
+  JS schedules work -> main thread continues -> callback/promise later
+~~~
+
+Important nuance:
+- JavaScript can be **single-threaded but non-blocking**
+- "non-blocking" does **not** mean the work finished instantly
+- it means the current JS thread was free to keep processing other tasks
+
+Typical blocking sources:
+- huge loops
+- heavy JSON parsing
+- large synchronous localStorage work
+- layout thrashing
+- sync XHR (deprecated/bad)
+
+Typical non-blocking patterns:
+- timers
+- fetch / network I/O
+- promises / async-await
+- Web Workers for heavy compute
+
+Why it matters: this concept is at the heart of why JavaScript can power interactive UIs despite being single-threaded. Production angle: poor INP is often just "too much blocking main-thread work"; the fix is to chunk, defer, or move the work off-thread. Follow-up: "Is async/await blocking?" No — \`await\` pauses the function, not the whole thread; the rest continues via the event loop.`,
         },
         {
           q: "What is starvation in the event loop?",
@@ -716,6 +807,180 @@ The "why": \`Object.create\` is the purest expression of prototypal inheritance 
       ],
       tip: "Arrow functions are common in React — explain why they don't have their own 'this'.",
       rajnishAngle: "",
+    },
+    {
+      title: "Data Types & Type Conversions",
+      subtopics: [
+        "Primitive vs reference types",
+        "typeof quirks",
+        "Truthy/falsy values",
+        "Implicit coercion",
+        "Explicit conversion",
+        "call vs apply vs bind",
+      ],
+      questions: [
+        {
+          q: "What are the main JavaScript data types? Primitive vs reference?",
+          answer: `JavaScript values fall into two broad buckets: **primitive values** and **objects (reference types)**.
+
+**Primitive types**:
+- \`string\`
+- \`number\`
+- \`bigint\`
+- \`boolean\`
+- \`undefined\`
+- \`symbol\`
+- \`null\`
+
+Everything else is an **object/reference type**: plain objects, arrays, functions, dates, maps, sets, regexes, etc.
+
+~~~js
+const a = 10;                // primitive
+const b = "hello";           // primitive
+const c = null;              // primitive
+const d = { name: "Raj" };   // object
+const e = [1, 2, 3];         // object
+const f = function () {};    // function object
+~~~
+
+The practical difference interviewers want:
+- **Primitives are copied by value**
+- **Objects are copied by reference**
+
+~~~js
+let x = 10;
+let y = x;
+y = 20;
+console.log(x); // 10
+
+const user1 = { name: "Raj" };
+const user2 = user1;
+user2.name = "Aman";
+console.log(user1.name); // "Aman"
+~~~
+
+~~~
+primitive copy:  x -> 10      y -> 10   (separate values)
+object copy:     user1 ─┐
+                        ├─▶ { name: "Raj" }
+                 user2 ─┘   (same object)
+~~~
+
+Important quirks to mention:
+- \`typeof null === "object"\` is a historical bug
+- arrays are objects, so \`typeof [] === "object"\`
+- functions are callable objects, so \`typeof fn === "function"\`
+
+Why it matters: this explains mutation bugs, React state update mistakes, shallow vs deep copy issues, and why equality behaves differently for objects. Follow-up: "How do you detect arrays?" \`Array.isArray(x)\`. "How do you compare objects?" By reference unless you write a deep comparison.`,
+        },
+        {
+          q: "How does type conversion work in JavaScript? Implicit vs explicit coercion?",
+          answer: `JavaScript does **type conversion** in two ways:
+- **Explicit conversion**: you intentionally convert using \`Number()\`, \`String()\`, \`Boolean()\`
+- **Implicit coercion**: JavaScript converts automatically during operations/comparisons
+
+~~~js
+Number("42");      // 42
+String(99);        // "99"
+Boolean(0);        // false
+
+"5" + 1;           // "51"   string concatenation
+"5" - 1;           // 4      numeric coercion
+true + 1;          // 2
+null + 1;          // 1
+undefined + 1;     // NaN
+~~~
+
+The mental model:
+- If \`+\` sees a string, it often becomes **string concatenation**
+- Math operators like \`-\`, \`*\`, \`/\` usually coerce to **number**
+- Conditionals coerce values to **boolean**
+
+~~~text
+"5" + 1   -> "51"
+"5" - 1   -> 4
+Boolean("")  -> false
+Boolean("0") -> true
+~~~
+
+The **falsy values** are only:
+\`false\`, \`0\`, \`-0\`, \`0n\`, \`""\`, \`null\`, \`undefined\`, \`NaN\`
+
+Everything else is truthy, including:
+- \`[]\`
+- \`{}\`
+- \`"0"\`
+- \`"false"\`
+
+Common interview traps:
+~~~js
+[] == false;   // true
+"" == 0;       // true
+null == undefined; // true
+null === undefined; // false
+~~~
+
+This is why senior engineers prefer:
+- **explicit conversions when readability matters**
+- **strict equality \`===\` instead of loose equality \`==\`**
+
+Why it matters: coercion bugs cause real production issues in forms, query params, feature flags, and conditional rendering. Good interview line: "JavaScript coercion is powerful but surprising, so I prefer explicit conversion and strict equality unless I deliberately want coercion." Follow-up: "Difference between \`==\` and \`===\`?" \`==\` coerces, \`===\` compares without coercion.`,
+        },
+        {
+          q: "What is the difference between call, apply, and bind?",
+          answer: `All three let you control the value of **\`this\`** for a function, but they differ in **when** the function runs and **how** arguments are passed.
+
+~~~js
+function introduce(city, country) {
+  return this.name + " from " + city + ", " + country;
+}
+
+const user = { name: "Raj" };
+
+console.log(introduce.call(user, "Pune", "India"));
+console.log(introduce.apply(user, ["Pune", "India"]));
+
+const bound = introduce.bind(user, "Pune", "India");
+console.log(bound());
+~~~
+
+Difference:
+- \`call\` -> invokes immediately, args passed one by one
+- \`apply\` -> invokes immediately, args passed as an array
+- \`bind\` -> does **not** invoke immediately; returns a new function
+
+~~~text
+call  -> run now with this + args
+apply -> run now with this + args[]
+bind  -> make a new pre-configured function for later
+~~~
+
+When \`bind\` is especially useful:
+- fixing the classic **lost this** callback problem
+- partial application (presetting some arguments)
+
+~~~js
+const user2 = {
+  name: "Raj",
+  greet() {
+    console.log(this.name);
+  },
+};
+
+setTimeout(user2.greet, 100);            // undefined / lost this
+setTimeout(user2.greet.bind(user2), 100); // "Raj"
+~~~
+
+One more subtlety:
+- \`call\` and \`apply\` execute now
+- \`bind\` is like preparing a reusable wrapper
+
+Why it matters: this comes up constantly in JavaScript interviews because it tests whether you understand function invocation, \`this\`, and callbacks under the hood. Follow-up: "Does bind change the original function?" No, it returns a new one. "Can bind be used multiple times?" Yes, but rebinding a bound function's \`this\` usually doesn't change the original bound \`this\`.`,
+        },
+      ],
+      tip: "Use === by default. Reach for explicit Number/String/Boolean conversion when code would otherwise depend on coercion magic.",
+      rajnishAngle:
+        "These questions show up in every frontend JS round because they connect directly to form handling, query params, and React state bugs.",
     },
     {
       title: "Async JavaScript",

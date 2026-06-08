@@ -1,7 +1,7 @@
 import type { Week } from "../types";
 
 export const week06: Week = {
-  week: 6,
+  week: 3,
   theme: "Browser, CSS & Web APIs",
   color: "#EC4899",
   topics: [
@@ -499,6 +499,385 @@ The "why" to convey: \`window\` is where the browser exposes its capabilities; a
       tip: "localStorage/sessionStorage are synchronous string stores; cookies are tiny and sent to the server on every request. Never store auth tokens in localStorage.",
       rajnishAngle:
         "Theme/lang in localStorage, per-tab flows in sessionStorage, HttpOnly auth cookies, web-vitals via sendBeacon — real choices on the news app.",
+    },
+    {
+      title: "DOM Events, Shadow DOM & Page Lifecycle",
+      subtopics: [
+        "Event bubbling vs capturing",
+        "Event delegation",
+        "CustomEvent",
+        "DOMContentLoaded / load / beforeunload / unload",
+        "Shadow DOM basics",
+      ],
+      questions: [
+        {
+          q: "What is event bubbling vs capturing in the DOM?",
+          answer: `When an event happens on an element, it travels through the DOM in **phases**:
+
+1. **Capturing phase** — from \`window\`/document down toward the target
+2. **Target phase** — the event reaches the actual clicked/focused element
+3. **Bubbling phase** — from the target back up through ancestors
+
+~~~html
+<div id="parent">
+  <button id="child">Click</button>
+</div>
+~~~
+
+~~~js
+parent.addEventListener("click", () => console.log("parent bubble"));
+parent.addEventListener("click", () => console.log("parent capture"), true);
+child.addEventListener("click", () => console.log("child"));
+~~~
+
+Possible order:
+~~~text
+parent capture
+child
+parent bubble
+~~~
+
+The default for \`addEventListener\` is **bubbling**. Passing \`true\` (or \`{ capture: true }\`) listens in the capturing phase.
+
+Why bubbling matters: it lets ancestor elements respond to events from descendants, which is exactly what powers **event delegation**. Why capturing matters: it gives a parent a chance to intercept/log/handle the event on the way down.
+
+Useful controls:
+- \`event.stopPropagation()\` -> stops the event from moving further up/down
+- \`event.stopImmediatePropagation()\` -> also stops other listeners on the same node
+- \`event.preventDefault()\` -> stops the browser's default action, not propagation
+
+Why it matters: bubbling/capturing is foundational DOM knowledge, and interviewers often use it to test whether you truly understand how browser events propagate rather than just memorizing \`onClick\`. Follow-up: "Do all events bubble?" No — some like \`focus\` and \`blur\` do not bubble (though \`focusin\`/\`focusout\` do).`,
+        },
+        {
+          q: "What is event delegation and why is it useful?",
+          answer: `**Event delegation** means attaching one listener to a **common ancestor** instead of many listeners to individual children, then using \`event.target\` or \`closest()\` to figure out which child triggered it. It works because most DOM events **bubble**.
+
+~~~html
+<ul id="list">
+  <li data-id="1">A</li>
+  <li data-id="2">B</li>
+  <li data-id="3">C</li>
+</ul>
+~~~
+
+~~~js
+list.addEventListener("click", (event) => {
+  const item = event.target.closest("li");
+  if (!item) return;
+  console.log("clicked id:", item.dataset.id);
+});
+~~~
+
+~~~
+instead of:
+  li1 listener
+  li2 listener
+  li3 listener
+use:
+  ONE listener on <ul>, let bubbling bring events upward
+~~~
+
+Why it's useful:
+1. **Fewer listeners** — lower memory and setup cost
+2. **Works for dynamic content** — newly added children automatically work
+3. **Cleaner code** — central event handling logic
+
+This is especially valuable for:
+- large tables/lists
+- menus
+- infinite-scroll feeds
+- dynamically rendered DOM
+
+The key implementation detail: always guard carefully, usually with \`closest()\`, because clicks can originate from nested descendants inside the intended item.
+
+~~~js
+const button = event.target.closest("[data-action]");
+if (!button || !container.contains(button)) return;
+~~~
+
+Why it matters: event delegation is a very common frontend interview topic because it combines bubbling knowledge with performance and dynamic DOM handling. Production angle: article lists, menu systems, and ad containers often use delegated listeners instead of attaching handlers to hundreds of nodes. Follow-up: "When not to use it?" When the event doesn't bubble, or when per-node behavior/state makes a single ancestor handler awkward.`,
+        },
+        {
+          q: "What are custom events in JavaScript and how do you create them?",
+          answer: `A **custom event** lets your code dispatch its own named event and optionally attach extra data. This is useful when you want loosely coupled communication between DOM-based modules without directly calling each other.
+
+Use the **\`CustomEvent\`** constructor:
+
+~~~js
+const event = new CustomEvent("cart:add", {
+  detail: { productId: 123, qty: 2 },
+  bubbles: true,
+});
+
+document.dispatchEvent(event);
+
+document.addEventListener("cart:add", (e) => {
+  console.log(e.detail.productId, e.detail.qty);
+});
+~~~
+
+Key parts:
+- **event name** — like \`"cart:add"\`
+- **detail** — custom payload available as \`event.detail\`
+- **bubbles** — whether it should bubble through ancestors
+- **composed** — whether it can cross Shadow DOM boundaries
+
+~~~text
+dispatchEvent(customEvent)
+  -> listeners for that event name run
+  -> event.detail carries your payload
+~~~
+
+Why they are useful:
+- decouple publisher and listener
+- DOM-native event model
+- can work across independent widgets/modules
+
+Examples:
+- \`modal:open\`
+- \`article:bookmark\`
+- \`theme:changed\`
+
+Why it matters: custom events are a clean way to build small event-driven systems in browser code and come up in interviews around DOM architecture. Follow-up: "Why not just call a function?" Direct calls create tighter coupling; custom events allow modules to subscribe without the sender knowing who listens.`,
+        },
+        {
+          q: "What is the difference between DOMContentLoaded, load, beforeunload, and unload?",
+          answer: `These page lifecycle events fire at different moments in a page's life:
+
+~~~text
+HTML parsed -> DOMContentLoaded
+all resources finished -> load
+user about to leave -> beforeunload
+page unloading -> unload
+~~~
+
+**DOMContentLoaded**
+- fires when the HTML is fully parsed and the DOM is built
+- does **not** wait for images, iframes, or most external resources
+- great for DOM setup / wiring listeners
+
+**load**
+- fires when the whole page is loaded
+- waits for images, stylesheets, iframes, etc.
+- useful when you need dimensions/resources fully available
+
+**beforeunload**
+- fires when the page is about to be closed/reloaded/navigated away
+- can be used to warn about unsaved changes
+- heavily restricted by browsers
+
+**unload**
+- fires when the document is being unloaded
+- unreliable for modern analytics/work; avoid depending on it
+
+~~~js
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM ready");
+});
+
+window.addEventListener("load", () => {
+  console.log("everything loaded");
+});
+
+window.addEventListener("beforeunload", (e) => {
+  e.preventDefault();
+  e.returnValue = "";
+});
+~~~
+
+Modern advice:
+- initialize DOM behavior on **DOMContentLoaded**
+- use **load** only if you truly need full resource completion
+- prefer **visibilitychange** / **pagehide** / **sendBeacon** over \`unload\` for analytics
+
+Why it matters: interviewers ask this to see if you understand browser lifecycle timing, especially the difference between "DOM is ready" and "every asset finished loading." Follow-up: "Why avoid unload?" It's unreliable, can hurt performance, and many browsers aggressively limit it.`,
+        },
+        {
+          q: "What is Shadow DOM and how is it different from the regular DOM?",
+          answer: `**Shadow DOM** lets a component attach a private DOM subtree with **encapsulated markup and styles**. It is the foundation of Web Components and is used to prevent internal styles/structure from leaking out or being affected by the page's global CSS.
+
+~~~js
+const host = document.querySelector("#widget");
+const shadowRoot = host.attachShadow({ mode: "open" });
+
+shadowRoot.innerHTML = \`
+  <style>
+    p { color: red; }
+  </style>
+  <p>Hello from shadow DOM</p>
+\`;
+~~~
+
+~~~
+regular DOM:
+  global CSS can affect everything
+
+shadow DOM:
+  host element
+    └─ shadow root
+         └─ internal DOM + scoped styles
+~~~
+
+Key differences from the "regular" DOM:
+- styles inside the shadow tree are scoped there
+- outside page CSS generally doesn't leak in
+- internal DOM is encapsulated behind the host element
+- event behavior can change depending on whether events are **composed**
+
+Important terms:
+- **host** — the regular DOM element that owns the shadow root
+- **shadow root** — the root of the private subtree
+- **slot** — placeholder for projected/light DOM content
+
+Interview caveat:
+- Shadow DOM is **not security**
+- it is about **encapsulation**, not protection
+
+Why it matters: if by "dom vs showdom" you meant **DOM vs Shadow DOM**, this is the exact distinction interviewers usually want. Follow-up: "open vs closed shadow root?" \`open\` exposes \`element.shadowRoot\`; \`closed\` hides direct access.`,
+        },
+      ],
+      tip: "Event delegation = one ancestor listener + bubbling. DOMContentLoaded is for DOM readiness; load waits for all resources.",
+      rajnishAngle:
+        "These are practical browser topics for menus, feed items, analytics hooks, and widget integration across large content pages.",
+    },
+    {
+      title: "Script & Resource Loading",
+      subtopics: [
+        "script blocking behavior",
+        "async vs defer",
+        "script execution order",
+        "resource onload / onerror",
+      ],
+      questions: [
+        {
+          q: "What is the difference between async and defer on script tags?",
+          answer: `Both \`async\` and \`defer\` prevent a script from blocking HTML parsing while it downloads, but they differ in **execution timing** and **ordering**.
+
+**async**
+- downloads in parallel with HTML parsing
+- executes **as soon as it finishes downloading**
+- execution order is **not guaranteed**
+- good for independent scripts like analytics
+
+**defer**
+- downloads in parallel with HTML parsing
+- executes **after HTML parsing is complete**
+- preserves document order across deferred scripts
+- ideal for app scripts that depend on DOM or each other
+
+~~~html
+<script async src="analytics.js"></script>
+<script defer src="vendor.js"></script>
+<script defer src="app.js"></script>
+~~~
+
+~~~
+async:
+  parse HTML ──▶ script downloads in parallel ──▶ run immediately when ready
+  order can jump around
+
+defer:
+  parse HTML fully first
+  then run deferred scripts in document order
+~~~
+
+Important relationship:
+- deferred scripts run **before** \`DOMContentLoaded\`
+- async scripts do **not** guarantee that relationship
+
+Good rule of thumb:
+- **async** -> independent third-party / analytics
+- **defer** -> your main app bundles
+
+Why it matters: this is one of the most common browser loading interview questions because it directly affects performance and DOM readiness bugs. Follow-up: "What about a plain script tag?" A normal script blocks parsing immediately until it downloads and executes.`,
+        },
+        {
+          q: "How do onload and onerror work for resource loading?",
+          answer: `Resources like images, scripts, and styles can fire **\`load\`** on success and **\`error\`** on failure. These events let you react when a resource finishes or fails to fetch/parse.
+
+Example with an image:
+
+~~~js
+const img = new Image();
+img.onload = () => {
+  console.log("image loaded", img.width, img.height);
+};
+img.onerror = () => {
+  console.log("image failed to load");
+};
+img.src = "/hero.jpg";
+~~~
+
+Example with a script:
+
+~~~js
+const script = document.createElement("script");
+script.src = "/widget.js";
+script.onload = () => console.log("script ready");
+script.onerror = () => console.log("script failed");
+document.head.appendChild(script);
+~~~
+
+What they mean:
+- **onload** -> resource loaded successfully
+- **onerror** -> network/load/parse failure prevented successful use
+
+Common uses:
+- fallback image if the primary one fails
+- lazy-load optional widgets
+- load third-party SDKs dynamically
+
+~~~text
+resource requested
+  -> success => load event
+  -> failure => error event
+~~~
+
+Important nuance:
+- \`window.onload\` means the whole page loaded
+- \`img.onload\` / \`script.onload\` means that specific resource loaded
+
+Why it matters: resource loading questions are common because they connect browser events with real-world resilience and lazy loading. Follow-up: "Can stylesheet load errors be caught?" Yes, but behavior historically varied more than images/scripts, so people often verify via network/devtools or fallbacks.`,
+        },
+        {
+          q: "How do script loading and DOM readiness relate to DOMContentLoaded?",
+          answer: `The key point is that **script loading strategy changes when the DOM becomes ready**.
+
+Rules:
+- a normal synchronous script blocks parsing immediately
+- deferred scripts wait until parsing is done, then execute in order
+- \`DOMContentLoaded\` fires **after parsing and after deferred scripts**
+- async scripts are independent and may run before or after DOMContentLoaded
+
+~~~html
+<script src="blocking.js"></script>
+<script defer src="app.js"></script>
+<script async src="analytics.js"></script>
+~~~
+
+~~~
+HTML parsing
+  plain script  -> stop parsing, download/execute now
+  defer script  -> keep parsing, run later before DOMContentLoaded
+  async script  -> keep parsing, run whenever ready
+
+DOMContentLoaded waits for:
+  HTML parsing + deferred scripts
+
+DOMContentLoaded does NOT wait for:
+  images, iframes, most async scripts
+~~~
+
+Practical consequence:
+- If your code depends on DOM elements existing, either place the script at the end of \`body\`, use \`defer\`, or wait for \`DOMContentLoaded\`.
+- If it's just analytics and doesn't depend on DOM order, \`async\` is often fine.
+
+Why it matters: a lot of real bugs come from scripts running before the DOM nodes they expect exist, or from developers confusing DOM readiness with full page load. Follow-up: "If I use defer, do I still need DOMContentLoaded?" Usually no for that script, because defer already waits for parsing to finish.`,
+        },
+      ],
+      tip: "Default app scripts to defer. Use async for independent third-party scripts that do not depend on DOM order.",
+      rajnishAngle:
+        "This is directly relevant to loading analytics, ad scripts, and widgets without breaking DOM timing or hurting performance.",
     },
   ],
 };
