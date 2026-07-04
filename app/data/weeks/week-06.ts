@@ -735,6 +735,127 @@ Interview caveat:
 
 Why it matters: if by "dom vs showdom" you meant **DOM vs Shadow DOM**, this is the exact distinction interviewers usually want. Follow-up: "open vs closed shadow root?" \`open\` exposes \`element.shadowRoot\`; \`closed\` hides direct access.`,
         },
+        {
+          q: "A button click sometimes fires twice. What are the possible causes and fixes?",
+          answer: `This is almost always one of a handful of specific bugs, not a browser fluke — the debugging approach is to check each one in order rather than guessing.
+
+**1. Duplicate event listener registration** — the most common cause. If \`addEventListener\` is called again (e.g. inside a re-render, a re-mounted component whose cleanup didn't run, or a script loaded twice), the same handler fires once per registration.
+~~~js
+// ❌ bug: attaching a new listener every time this function runs (e.g. on every re-render)
+function setupButton() {
+  document.querySelector("#save").addEventListener("click", handleSave);
+}
+setupButton();
+setupButton(); // called again somewhere -> now TWO listeners -> click fires handleSave twice
+
+// ✅ fix: remove before adding, or guard against re-registration
+document.querySelector("#save").removeEventListener("click", handleSave);
+document.querySelector("#save").addEventListener("click", handleSave);
+~~~
+In React specifically: a \`useEffect\` that adds a listener but has a **missing or broken cleanup function** leaves the old listener attached when the effect re-runs, so a new one stacks on top of it.
+~~~jsx
+// ❌ no cleanup - every re-run of this effect adds ANOTHER listener
+useEffect(() => {
+  button.addEventListener("click", handleClick);
+}, [someDep]);
+
+// ✅ always remove what you added
+useEffect(() => {
+  button.addEventListener("click", handleClick);
+  return () => button.removeEventListener("click", handleClick);
+}, [someDep]);
+~~~
+
+**2. Event bubbling triggering handlers at multiple levels** — if both the button AND an ancestor have a click listener (e.g. via event delegation) and the ancestor handler also calls the same logic, you get two effective invocations of the underlying action, even though only one is technically "the button's own" handler.
+~~~js
+// button click bubbles up - if #container ALSO listens for clicks on buttons via delegation
+// and directly wired listeners exist too, the save logic can run from both paths
+container.addEventListener("click", (e) => {
+  if (e.target.matches("#save")) handleSave(); // fires via delegation
+});
+saveButton.addEventListener("click", handleSave); // ALSO fires directly -> double
+~~~
+Fix: pick **one** mechanism — either direct listeners or delegation, not both for the same action.
+
+**3. Both a form's \`submit\` handler and a button's \`click\` handler firing** — a \`<button>\` inside a \`<form>\` defaults to \`type="submit"\`, so clicking it can trigger both your \`onClick\` handler AND the form's \`onSubmit\`, effectively running the save logic twice via two different event types.
+~~~jsx
+// ❌ button defaults to type="submit" -> triggers form onSubmit too
+<form onSubmit={handleSave}>
+  <button onClick={handleSave}>Save</button> {/* fires AGAIN via form submit */}
+</form>
+
+// ✅ make intent explicit
+<form onSubmit={handleSave}>
+  <button type="button" onClick={(e) => e.preventDefault()}>Cancel</button>
+  <button type="submit">Save</button> {/* let the form's onSubmit be the ONLY trigger */}
+</form>
+~~~
+
+**4. Framework-specific double-invoke in development** — React 18's Strict Mode intentionally double-invokes certain functions (including effect setup) in development only, to help surface missing cleanup bugs. If the "double fire" only happens in dev and not in a production build, this is very likely the cause, not a real bug — check whether cleanup logic is correctly written rather than trying to "fix" the double-invoke itself.
+
+~~~text
+debug order:
+  1. does it double-fire in production too? if NOT -> likely Strict Mode dev double-invoke, check cleanup
+  2. count actual listeners: getEventListeners($0) in Chrome DevTools console
+  3. check useEffect cleanup functions are present and correct
+  4. check for delegation + direct listener doing the same job
+  5. check button type inside a <form>
+~~~
+
+Why it matters: "click fires twice" reports are common and each cause needs a different fix — the DevTools \`getEventListeners()\` helper (in the console, select the element, run \`getEventListeners($0)\`) is the fastest way to confirm whether there are literally two listeners attached before chasing any of the other explanations. Follow-up: "How do you defensively guard against double-fire regardless of cause?" — a simple in-flight guard/debounce around the actual side-effecting action (e.g. disable the button or check an \`isSubmitting\` flag before running save logic) protects the outcome even if the underlying double-listener bug isn't found immediately.`,
+        },
+        {
+          q: "How do you detect and isolate DOM mutation impacts?",
+          answer: `\`MutationObserver\` is the API purpose-built for this — it lets you watch a subtree for changes (child additions/removals, attribute changes, text changes) **asynchronously**, without the performance cost of the old, deprecated Mutation Events (which fired synchronously on every single change and could tank performance).
+
+~~~js
+const observer = new MutationObserver((mutations) => {
+  for (const mutation of mutations) {
+    console.log(mutation.type, mutation.target, mutation.addedNodes, mutation.removedNodes);
+  }
+});
+
+observer.observe(document.querySelector("#feed"), {
+  childList: true,   // watch for added/removed children
+  attributes: true,  // watch for attribute changes
+  subtree: true,     // watch descendants too, not just direct children
+  characterData: true, // watch text node changes
+});
+
+// later, when done watching:
+observer.disconnect();
+~~~
+
+**Isolating performance impact** — mutation observation itself is cheap, but reacting to every mutation with expensive work (layout reads, re-renders, network calls) is where it hurts. Batch your response instead of doing work per-mutation:
+
+~~~js
+let pending = false;
+const observer = new MutationObserver(() => {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { // batch reactions to the next frame instead of per-mutation
+    handleAllChanges();
+    pending = false;
+  });
+});
+~~~
+
+**Isolating WHICH script/mutation is causing a performance problem** (e.g. a third-party widget thrashing the DOM):
+1. Attach a \`MutationObserver\` scoped to the suspect container and log \`mutation.target\`/\`addedNodes\` to see the volume and source of changes.
+2. Cross-reference with the **Chrome DevTools Performance panel** — record a trace, look for "Recalculate Style" / "Layout" entries clustered around the same timestamps as the logged mutations, confirming that specific subtree's churn is driving the layout cost.
+3. For a known offender, temporarily wrap it (e.g. an ad slot or third-party widget) in an isolated container and check whether disabling it removes the mutation volume — confirms causality before committing to a fix (iframe isolation, rate-limiting its updates, or removing the integration).
+
+**Detached DOM node leaks** are a related concern MutationObserver can help catch: if you're removing nodes from the DOM in your mutation handler's cleanup, but something else (a closure, a stored reference, an old event listener) still holds a reference to those removed nodes, they leak — take a heap snapshot in DevTools Memory panel and search for "Detached" to confirm.
+
+~~~text
+MutationObserver fires (async, batched by the browser)
+   -> your callback logs/reacts
+   -> DON'T do expensive work per mutation record
+   -> batch reactions via requestAnimationFrame/debounce instead
+~~~
+
+Why it matters: this is the modern replacement for the deprecated, synchronous Mutation Events, and knowing to batch reactions (rather than acting on every single mutation record) is what prevents the observer itself from becoming a new performance problem. Follow-up: "Why not use Mutation Events instead?" — they're deprecated, fire synchronously per-change (blocking and slow at scale), and are actively discouraged by browser vendors in favor of the batched, async \`MutationObserver\`.`,
+        },
       ],
       tip: "Event delegation = one ancestor listener + bubbling. DOMContentLoaded is for DOM readiness; load waits for all resources.",
       rajnishAngle:

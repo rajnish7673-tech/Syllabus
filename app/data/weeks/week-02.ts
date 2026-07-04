@@ -1392,6 +1392,63 @@ React Query handles this automatically: changing the queryKey cancels/ignores th
 
 Which to prefer: AbortController is best (stops the work *and* the update); the sequence guard is the minimal pattern when you can't cancel. Production angle: autocomplete — AbortController cancels the prior request on each keystroke so out-of-order responses can never overwrite newer ones. Follow-up: "Why not just debounce?" Debounce reduces the *number* of requests but doesn't fix ordering — you still need cancellation/guards for correctness.`,
         },
+        {
+          q: "Build a task queue where async tasks execute strictly one at a time.",
+          answer: `This is different from sequencing a **fixed, known** array of tasks with \`reduce\` or a \`for...of\` loop (see the "run async tasks sequentially" question) — here, tasks can be **enqueued at any time**, including while a previous task is still running, and the queue must guarantee they still run one after another in the order they were added. That needs a small stateful class, not just a loop.
+
+~~~js
+class TaskQueue {
+  #queue = [];
+  #isRunning = false;
+
+  add(taskFn) {
+    return new Promise((resolve, reject) => {
+      this.#queue.push({ taskFn, resolve, reject });
+      this.#run();
+    });
+  }
+
+  async #run() {
+    if (this.#isRunning) return; // already draining the queue, don't start a second runner
+    this.#isRunning = true;
+
+    while (this.#queue.length > 0) {
+      const { taskFn, resolve, reject } = this.#queue.shift();
+      try {
+        resolve(await taskFn());
+      } catch (err) {
+        reject(err);
+      }
+    }
+
+    this.#isRunning = false;
+  }
+}
+
+const queue = new TaskQueue();
+queue.add(() => fetchOrder(1)).then(console.log);
+queue.add(() => fetchOrder(2)).then(console.log); // waits for order 1 to finish first
+queue.add(() => fetchOrder(3)).then(console.log); // waits for order 2
+~~~
+
+~~~text
+add(task1) -> queue: [1]           runner starts, isRunning=true
+add(task2) -> queue: [1,2]         (runner already going, add() just enqueues)
+add(task3) -> queue: [1,2,3]
+
+runner loop:
+  shift task1 -> await -> resolve caller's promise for task1
+  shift task2 -> await -> resolve caller's promise for task2
+  shift task3 -> await -> resolve caller's promise for task3
+queue empty -> isRunning=false
+~~~
+
+The two ideas that make this work:
+- **\`add()\` returns its own promise immediately**, decoupled from when the task actually runs — the caller can \`await queue.add(fn)\` and get the task's result whenever its turn comes.
+- **The \`#isRunning\` guard** ensures only one \`#run()\` loop is ever active. Without it, calling \`add()\` while the queue is already draining would spin up a second concurrent runner, breaking the "one at a time" guarantee.
+
+Why it matters: this pattern shows up for anything that must serialize writes — updating a single IndexedDB record from multiple UI events, batching analytics beacons in order, or rate-limiting write requests to a backend that doesn't handle concurrent writes safely. Follow-up: "How would you add a concurrency limit of N instead of 1?" — track a count of in-flight tasks, start a new one from the queue whenever an active one finishes and the count is below N (the same shape as the "limit concurrency to 3" pooling pattern, generalized).`,
+        },
       ],
       tip: "Race condition fix: use a flag or AbortController — cancel the previous request when a new one starts. React Query does this automatically.",
       rajnishAngle:
@@ -1500,6 +1557,61 @@ function promiseAny(iterable) {
 ~~~
 
 Follow-up: "Difference between race and any in your code?" race passes both \`resolve, reject\`; any passes only \`resolve\` to success and counts down failures into an AggregateError.`,
+        },
+        {
+          q: "Implement Promise.allSettled from scratch.",
+          answer: `Unlike \`Promise.all\` (which rejects immediately on the first failure), \`allSettled\` **always resolves** — once every input has settled — with an array describing the outcome of each one, success or failure. This is what you want when you need results from every call regardless of whether some fail, e.g. running 5 independent API calls and rendering whichever ones succeeded.
+
+~~~js
+function promiseAllSettled(iterable) {
+  return new Promise((resolve) => {
+    const items = Array.from(iterable);
+    const results = new Array(items.length);
+    let remaining = items.length;
+
+    if (remaining === 0) return resolve([]);
+
+    items.forEach((item, i) => {
+      Promise.resolve(item).then(
+        (value) => {
+          results[i] = { status: "fulfilled", value };
+          if (--remaining === 0) resolve(results);
+        },
+        (reason) => {
+          results[i] = { status: "rejected", reason };
+          if (--remaining === 0) resolve(results);
+        }
+      );
+    });
+  });
+}
+
+promiseAllSettled([
+  Promise.resolve(1),
+  Promise.reject("failed"),
+  Promise.resolve(3),
+]).then(console.log);
+// [
+//   { status: "fulfilled", value: 1 },
+//   { status: "rejected", reason: "failed" },
+//   { status: "fulfilled", value: 3 }
+// ]
+~~~
+
+~~~text
+[ A(ok) , B(fails) , C(ok) ]
+   │        │          │
+   ▼        ▼          ▼
+fulfilled rejected  fulfilled
+   \\        │          /
+    \\_______|_________/
+            ▼
+  resolve([...all three results])   <- never rejects, waits for ALL to settle
+~~~
+
+The key structural difference from the \`Promise.all\` polyfill: **both** the success and failure callbacks decrement the same \`remaining\` counter and both can trigger the final \`resolve\` — there is no \`reject\` path at all in the outer promise. Order is preserved by index (\`results[i]\`), same trick as \`Promise.all\`, so results line up with their original input position even though they may settle out of order.
+
+Why it matters: this distinguishes candidates who understand *why* \`allSettled\` exists — dashboards showing partial data (some widgets failed to load, others didn't), batch operations where you need a per-item success/failure report, or a health-check page pinging multiple services. Follow-up: "When would you prefer \`all\` over \`allSettled\`?" — when any single failure should abort the whole operation (e.g. a multi-step transaction where a failed step makes the rest meaningless).`,
         },
         {
           q: "Write a function that retries a Promise-returning function N times with delay.",

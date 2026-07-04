@@ -312,6 +312,398 @@ The overlap check is \`start <= lastEnd\` if touching endpoints count as overlap
 
 Complexity: **O(n log n) time, O(n) output space**. This is a very common sorting pattern question because it combines interval reasoning with a simple greedy scan. Follow-up: "Insert interval?" Same idea but you weave one interval into a sorted list. "Meeting rooms?" Sort starts/ends or use a heap.`,
         },
+        {
+          q: "Write a function that takes an array of numbers and returns a new array with only unique values.",
+          answer: `The interview is really testing whether you reach for \`Set\` (the O(n) answer) instead of nested loops (O(n²)).
+
+~~~js
+function unique(arr) {
+  return [...new Set(arr)];
+}
+unique([1, 2, 2, 3, 3, 3, 4]); // [1, 2, 3, 4]
+~~~
+
+\`Set\` only stores unique values and preserves insertion order, so spreading it back into an array gives you dedup + order preservation for free.
+
+Alternative with \`filter\` + \`indexOf\` (works, but is O(n²) since \`indexOf\` scans linearly for every element):
+
+~~~js
+function uniqueFilter(arr) {
+  return arr.filter((val, idx) => arr.indexOf(val) === idx);
+}
+~~~
+
+For objects/arrays (reference types), \`Set\` compares by reference, not by value, so \`unique([{id:1}, {id:1}])\` would NOT dedupe — you'd need a key-based approach:
+
+~~~js
+function uniqueBy(arr, keyFn) {
+  const seen = new Set();
+  return arr.filter(item => {
+    const key = keyFn(item);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+uniqueBy([{id:1},{id:1},{id:2}], x => x.id); // [{id:1},{id:2}]
+~~~
+
+~~~text
+Set approach:    O(n) time, O(n) space  <- preferred
+filter+indexOf:  O(n²) time             <- avoid for large arrays
+~~~
+
+Why it matters: \`Set\` is the expected answer at any level; the follow-up that separates seniors is handling **dedup by key** for arrays of objects, since \`Set\` alone only works for primitives. Follow-up: "How would you dedupe case-insensitively?" — normalize the key (\`.toLowerCase()\`) before adding to the Set.`,
+        },
+        {
+          q: "Merge two arrays.",
+          answer: `There are two very different meanings of "merge" that interviewers test — clarify which one is being asked before coding.
+
+**1. Simple concatenation** (order doesn't matter, no sorting requirement):
+
+~~~js
+const a = [1, 2, 3];
+const b = [4, 5, 6];
+
+const merged1 = [...a, ...b];     // spread - most idiomatic
+const merged2 = a.concat(b);      // concat - doesn't mutate either array
+const merged3 = a.push(...b);     // push with spread - mutates 'a' in place
+~~~
+
+**2. Merge two already-sorted arrays into one sorted array** (the actual DSA question, see "Merge Two Sorted Arrays" for the two-pointer O(n) version) — just concatenating and sorting is O(n log n) and misses the point of the question:
+
+~~~js
+// naive - works but defeats the purpose of "merge two SORTED arrays"
+[...a, ...b].sort((x, y) => x - y);
+~~~
+
+~~~text
+concat/spread:        O(n + m), no ordering guarantee needed
+sort after concat:     O((n+m) log(n+m)) - wasteful if inputs are already sorted
+two-pointer merge:     O(n + m) - correct approach when inputs are sorted
+~~~
+
+Why it matters: this question is often a "warm-up" before the real one (merging *sorted* arrays/linked lists). Answering with spread/concat for the simple case, but immediately flagging "if these are sorted and you want it to stay sorted, I'd use a two-pointer merge instead of re-sorting" shows you understand when each tool applies.`,
+        },
+        {
+          q: "Reverse a String.",
+          answer: `Strings in JS are immutable, so "reversing" always means building a new string.
+
+~~~js
+function reverse(str) {
+  return str.split("").reverse().join("");
+}
+reverse("hello"); // "olleh"
+~~~
+
+This is the idiomatic one-liner: split into a character array, reverse the array in place, join back into a string.
+
+Manual loop version (shows you understand what's happening under the hood, and handles the interviewer's likely follow-up "do it without built-in reverse()"):
+
+~~~js
+function reverseLoop(str) {
+  let result = "";
+  for (let i = str.length - 1; i >= 0; i--) {
+    result += str[i];
+  }
+  return result;
+}
+~~~
+
+Two-pointer, in-place-style (works on an array of characters since strings can't be mutated):
+
+~~~js
+function reverseTwoPointer(str) {
+  const chars = str.split("");
+  let left = 0, right = chars.length - 1;
+  while (left < right) {
+    [chars[left], chars[right]] = [chars[right], chars[left]];
+    left++;
+    right--;
+  }
+  return chars.join("");
+}
+~~~
+
+~~~text
+split/reverse/join:  O(n) time, O(n) space, cleanest code
+for loop:            O(n) time, O(n) space (string concat creates new strings each time)
+two-pointer:         O(n) time, O(n) space (extra array needed since strings are immutable)
+~~~
+
+Gotcha to mention: this breaks for strings with surrogate pairs (emoji, some non-Latin scripts) because \`split("")\` splits by UTF-16 code unit, not by actual character. \`[..."👍hi"].reverse().join("")\` (spread uses the iterator, which is code-point aware) handles this correctly where \`.split("")\` would corrupt the emoji.
+
+Why it matters: this is a warm-up question, but the surrogate-pair gotcha and "why not \`for\` loop with string concatenation performance" are what separate a senior answer from a junior one.`,
+        },
+        {
+          q: "Palindrome Check.",
+          answer: `Check whether a string reads the same forwards and backwards. Two standard approaches:
+
+**1. Reverse and compare** (simplest, O(n) time and space):
+
+~~~js
+function isPalindrome(str) {
+  const cleaned = str.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return cleaned === cleaned.split("").reverse().join("");
+}
+isPalindrome("A man, a plan, a canal: Panama"); // true
+~~~
+
+Normalizing first (lowercase + strip non-alphanumeric) is what interviewers actually check for — most palindrome questions involve sentences with punctuation and mixed case, not just clean lowercase words.
+
+**2. Two-pointer, no extra string built** (O(n) time, O(1) extra space — the answer that shows algorithmic maturity):
+
+~~~js
+function isPalindromeTwoPointer(str) {
+  const cleaned = str.toLowerCase().replace(/[^a-z0-9]/g, "");
+  let left = 0, right = cleaned.length - 1;
+
+  while (left < right) {
+    if (cleaned[left] !== cleaned[right]) return false;
+    left++;
+    right--;
+  }
+  return true;
+}
+~~~
+
+~~~text
+left -> "r a c e c a r" <- right
+        r===r  a===a  c===c  (meet in middle) -> true
+~~~
+
+Why the two-pointer version matters: it avoids allocating a reversed copy of the string, and it can **short-circuit early** — the reverse-and-compare approach always processes the whole string even if the mismatch is at position 1. Follow-up: "Check if a string can become a palindrome by removing at most one character?" — two-pointer, and on mismatch try skipping either the left or right character and check if the remainder is a palindrome.`,
+        },
+        {
+          q: "Find Maximum & Minimum in an Array.",
+          answer: `The naive approach is fine functionally but the interview is testing whether you know the O(n) single-pass vs the "clever but slower" approaches.
+
+~~~js
+function findMinMax(arr) {
+  let min = arr[0], max = arr[0];
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] < min) min = arr[i];
+    if (arr[i] > max) max = arr[i];
+  }
+  return { min, max };
+}
+~~~
+
+Built-in shortcuts (fine for small arrays, but risky for large ones):
+
+~~~js
+Math.max(...arr);   // spread - throws "Maximum call stack size exceeded" for very large arrays (~100k+ elements)
+Math.min(...arr);
+
+arr.reduce((max, n) => Math.max(max, n), -Infinity); // safe for any size, still O(n)
+~~~
+
+~~~text
+single loop (min+max together):  O(n) time, ONE pass       <- best
+Math.max(...arr) + Math.min(...arr):  O(n) time, TWO passes, spread has a call-stack limit
+sort()[0] / sort()[length-1]:    O(n log n)                 <- avoid, wastes the sort
+~~~
+
+The subtlety worth mentioning out loud: finding both min AND max in the *same loop* (rather than two separate \`.reduce()\` calls) does it in a single pass instead of two — a small but real optimization interviewers listen for. A further optimization exists (pairwise comparison reduces comparisons from 2n to 1.5n) but is rarely expected unless the role is algorithm-heavy.
+
+Why it matters: this looks trivial but interviewers are checking whether you default to \`sort()\` (wasteful — full sort just to read two elements) or \`Math.max(...arr)\` (breaks on huge arrays) without thinking about the tradeoffs.`,
+        },
+        {
+          q: "Merge Two Sorted Arrays.",
+          answer: `Given two already-sorted arrays, produce one sorted array. The naive approach (\`[...a, ...b].sort()\`) is O((n+m) log(n+m)) and throws away the fact that the inputs are already sorted. The expected answer is the **two-pointer merge**, O(n+m), the same core idea used in merge sort's merge step.
+
+~~~js
+function mergeSorted(a, b) {
+  const result = [];
+  let i = 0, j = 0;
+
+  while (i < a.length && j < b.length) {
+    if (a[i] <= b[j]) {
+      result.push(a[i++]);
+    } else {
+      result.push(b[j++]);
+    }
+  }
+
+  // append whatever is left over (only one of these loops actually runs)
+  while (i < a.length) result.push(a[i++]);
+  while (j < b.length) result.push(b[j++]);
+
+  return result;
+}
+mergeSorted([1, 3, 5], [2, 4, 6]); // [1, 2, 3, 4, 5, 6]
+~~~
+
+~~~text
+a: [1, 3, 5]   b: [2, 4, 6]
+    i^              j^
+compare 1,2 -> take 1, i++
+compare 3,2 -> take 2, j++
+compare 3,4 -> take 3, i++
+compare 5,4 -> take 4, j++
+compare 5,6 -> take 5, i++
+i exhausted -> append remaining b: [6]
+result: [1,2,3,4,5,6]
+~~~
+
+Common follow-up: "Merge in-place into array \`a\` which has extra trailing space" (LeetCode 88 variant) — merge from the **back** to avoid overwriting values in \`a\` you haven't read yet:
+
+~~~js
+function mergeInPlace(a, aLen, b, bLen) {
+  let i = aLen - 1, j = bLen - 1, k = aLen + bLen - 1;
+  while (j >= 0) {
+    if (i >= 0 && a[i] > b[j]) a[k--] = a[i--];
+    else a[k--] = b[j--];
+  }
+}
+~~~
+
+Why it matters: this is the building block for merge sort, and the "merge from the back" trick for the in-place variant is a very common follow-up that trips people up if they try to merge from the front and overwrite unread data.`,
+        },
+        {
+          q: "Rotate an Array.",
+          answer: `Rotate an array right by \`k\` steps, e.g. \`[1,2,3,4,5,6,7]\` rotated right by 3 -> \`[5,6,7,1,2,3,4]\`.
+
+**Simple approach — slice and concat** (O(n) time, O(n) extra space, easiest to write correctly):
+
+~~~js
+function rotate(arr, k) {
+  k = k % arr.length; // handle k > length
+  return [...arr.slice(-k), ...arr.slice(0, -k)];
+}
+rotate([1,2,3,4,5,6,7], 3); // [5,6,7,1,2,3,4]
+~~~
+
+**In-place — the reversal trick** (O(n) time, O(1) extra space — the answer that shows real algorithmic depth): reverse the whole array, then reverse each of the two segments.
+
+~~~js
+function rotateInPlace(arr, k) {
+  k = k % arr.length;
+  reverse(arr, 0, arr.length - 1);   // reverse everything
+  reverse(arr, 0, k - 1);            // reverse first k elements
+  reverse(arr, k, arr.length - 1);   // reverse the rest
+  return arr;
+}
+
+function reverse(arr, start, end) {
+  while (start < end) {
+    [arr[start], arr[end]] = [arr[end], arr[start]];
+    start++;
+    end--;
+  }
+}
+~~~
+
+~~~text
+[1,2,3,4,5,6,7], k=3
+
+reverse all:        [7,6,5,4,3,2,1]
+reverse first k=3:  [5,6,7,4,3,2,1]
+reverse rest:        [5,6,7,1,2,3,4]  <- done
+~~~
+
+Always normalize \`k\` with \`k % arr.length\` first — a rotation of \`k = arr.length\` or more is equivalent to \`k % arr.length\`, and skipping this either wastes work or causes an off-by-one/out-of-bounds bug.
+
+Why it matters: the slice/concat version is fine for most interviews, but the reversal-trick in-place version is the one to mention if asked to optimize space — it's a classic pattern (also used for "rotate a matrix", "reverse words in a sentence") so recognizing it signals pattern-matching skill, not just memorization.`,
+        },
+        {
+          q: "Count character occurrences in a string (using an object).",
+          answer: `Build a frequency map — one of the most common building blocks in string/array problems (anagrams, first-non-repeating-char, etc).
+
+~~~js
+function countChars(str) {
+  const freq = {};
+  for (const char of str) {
+    freq[char] = (freq[char] || 0) + 1;
+  }
+  return freq;
+}
+countChars("hello"); // { h: 1, e: 1, l: 2, o: 1 }
+~~~
+
+Same idea with \`reduce\`:
+
+~~~js
+function countCharsReduce(str) {
+  return [...str].reduce((freq, char) => {
+    freq[char] = (freq[char] || 0) + 1;
+    return freq;
+  }, {});
+}
+~~~
+
+Using a \`Map\` instead of a plain object avoids prototype-pollution edge cases (a character like \`"toString"\` or \`"__proto__"\` colliding with \`Object.prototype\` members) and preserves insertion order reliably:
+
+~~~js
+function countCharsMap(str) {
+  const freq = new Map();
+  for (const char of str) {
+    freq.set(char, (freq.get(char) || 0) + 1);
+  }
+  return freq;
+}
+~~~
+
+~~~text
+"hello" ->
+h: 1
+e: 1
+l: 2   <- appeared twice
+o: 1
+~~~
+
+Why it matters: this frequency-map pattern is the foundation for a huge class of problems — anagram detection, "first unique character", character-frequency-based sliding window. Mentioning the \`Object.prototype\` collision risk (e.g. counting the string \`"constructor"\`) and reaching for \`Map\` or \`Object.create(null)\` is a senior-level detail most candidates miss. Follow-up: "Find the first non-repeating character" — build the frequency map first, then a second pass finds the first key with count 1.`,
+        },
+        {
+          q: "Count occurrences while ignoring spaces.",
+          answer: `Same frequency-map pattern as character counting, but filtering out whitespace before (or during) the count — testing whether you handle the "ignoring X" requirement cleanly rather than bolting on a fix afterward.
+
+~~~js
+function countIgnoringSpaces(str) {
+  const freq = {};
+  for (const char of str) {
+    if (char === " ") continue; // skip spaces during iteration
+    freq[char] = (freq[char] || 0) + 1;
+  }
+  return freq;
+}
+countIgnoringSpaces("a b b c"); // { a: 1, b: 2, c: 1 }
+~~~
+
+Filter-first approach (arguably more readable — the intent "ignore spaces" is explicit as its own step, not buried in a conditional):
+
+~~~js
+function countIgnoringSpacesFilter(str) {
+  return [...str]
+    .filter(char => char !== " ")
+    .reduce((freq, char) => {
+      freq[char] = (freq[char] || 0) + 1;
+      return freq;
+    }, {});
+}
+~~~
+
+If "ignoring spaces" should really mean "ignoring all whitespace" (tabs, newlines too), use a regex test instead of an exact-match check:
+
+~~~js
+function countIgnoringWhitespace(str) {
+  const freq = {};
+  for (const char of str) {
+    if (/\\s/.test(char)) continue;
+    freq[char] = (freq[char] || 0) + 1;
+  }
+  return freq;
+}
+~~~
+
+~~~text
+"a b b c"
+skip " " each time it appears
+-> a:1, b:2, c:1
+~~~
+
+Why it matters: this variant tests attention to the exact requirement ("spaces" vs "all whitespace" vs "punctuation too") — a common interview trap is over-generalizing or under-generalizing the filter condition without asking a clarifying question first.`,
+        },
       ],
       tip: "Sliding window = O(n) for contiguous subarray problems. Always ask: fixed or variable window size?",
       rajnishAngle:
@@ -1364,6 +1756,112 @@ Good senior answer:
 
 Follow-up: "Can you implement them manually?" Yes, with loops. "Can reduce replace map and filter?" Technically yes, but that usually hurts clarity.`,
         },
+        {
+          q: "You need to deeply compare two nested objects for equality. How do you approach it?",
+          answer: `\`===\` compares references for objects, so \`{a:1} === {a:1}\` is \`false\` — you need to recursively compare structure and values. There's no built-in \`deepEqual\` in JS, so the interview is testing how carefully you handle the edge cases, not just the happy path.
+
+**Basic recursive comparison:**
+
+~~~js
+function deepEqual(a, b) {
+  if (a === b) return true; // same reference, or same primitive value
+
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) {
+    return false; // different types, or one is null/primitive and they weren't === above
+  }
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+
+  return keysA.every(key =>
+    Object.prototype.hasOwnProperty.call(b, key) && deepEqual(a[key], b[key])
+  );
+}
+
+deepEqual({ a: 1, b: { c: 2 } }, { a: 1, b: { c: 2 } }); // true
+deepEqual({ a: 1 }, { a: 1, b: 2 });                      // false - key count differs
+~~~
+
+**Edge cases a senior answer should call out:**
+
+~~~js
+deepEqual(NaN, NaN);          // false with ===, but semantically these ARE equal
+deepEqual(new Date(0), new Date(0)); // false - two different Date objects, same time value
+deepEqual([1,2,3], {0:1,1:2,2:3,length:3}); // arrays vs array-likes
+deepEqual(new Map([["a",1]]), new Map([["a",1]])); // Object.keys() doesn't work on Map/Set at all
+~~~
+
+A more complete version handles \`NaN\`, arrays, \`Date\`, \`Map\`/\`Set\` explicitly:
+
+~~~js
+function deepEqualRobust(a, b) {
+  if (Object.is(a, b)) return true; // Object.is treats NaN === NaN as true, unlike ===
+
+  if (typeof a !== "object" || typeof b !== "object" || !a || !b) return false;
+
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+
+  if (a instanceof Map && b instanceof Map) {
+    if (a.size !== b.size) return false;
+    for (const [key, val] of a) {
+      if (!b.has(key) || !deepEqualRobust(val, b.get(key))) return false;
+    }
+    return true;
+  }
+
+  const keysA = Object.keys(a), keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(k => Object.prototype.hasOwnProperty.call(b, k) && deepEqualRobust(a[k], b[k]));
+}
+~~~
+
+In real projects, prefer a battle-tested library (\`lodash.isEqual\`, or \`fast-deep-equal\`) over hand-rolling this — they've already solved circular references, symbol keys, and typed arrays. Writing it from scratch is an interview exercise, not something to ship without a strong reason.
+
+Why it matters: this question tests whether you reach for \`===\` naively (wrong for objects), and whether you think about \`NaN\`, \`Date\`, circular references, and \`Map\`/\`Set\` — not just plain nested objects. Follow-up: "How would you handle circular references?" — track visited object pairs in a \`WeakSet\`/\`WeakMap\` and short-circuit if you've already compared that pair.`,
+        },
+        {
+          q: "splice() vs slice().",
+          answer: `These sound alike but behave completely differently — one of the classic "gotcha" pairs in JS interviews.
+
+~~~js
+const arr = [1, 2, 3, 4, 5];
+
+// slice(start, end) - does NOT mutate, returns a shallow copy of a portion
+const sliced = arr.slice(1, 3);
+console.log(sliced); // [2, 3]
+console.log(arr);    // [1, 2, 3, 4, 5]  <- unchanged
+
+// splice(start, deleteCount, ...items) - MUTATES the original array, returns removed items
+const removed = arr.splice(1, 2);
+console.log(removed); // [2, 3]  <- the removed elements
+console.log(arr);      // [1, 4, 5]  <- original array is now changed
+~~~
+
+Key differences:
+
+~~~text
+              slice                     splice
+mutates?      no                        yes
+returns       the extracted sub-array   the REMOVED elements (not the new array)
+use case      read a portion            insert/remove/replace in place
+~~~
+
+\`splice\` can also **insert** and **replace**, not just remove:
+
+~~~js
+const arr2 = [1, 2, 5];
+arr2.splice(2, 0, 3, 4); // insert 3,4 at index 2, delete 0 elements
+console.log(arr2); // [1, 2, 3, 4, 5]
+
+arr2.splice(0, 1, 99); // replace 1 element at index 0 with 99
+console.log(arr2); // [99, 2, 3, 4, 5]
+~~~
+
+Why it matters: in React/Redux-style state management, mutating state directly (accidentally reaching for \`splice\` instead of \`slice\`) breaks reference-equality checks that React relies on for re-renders — a component won't re-render because the array reference didn't change, even though its contents did. This is a very common real bug, not just a trivia question. Follow-up: "How do you remove an item from an array immutably?" — \`arr.filter((_, i) => i !== indexToRemove)\`, or \`[...arr.slice(0,i), ...arr.slice(i+1)]\`, never \`splice\` on state directly.`,
+        },
       ],
       tip: "For JS object/array rounds, first clarify whether you should mutate or return a new structure. In frontend interviews, immutable updates are usually preferred.",
       rajnishAngle:
@@ -1551,6 +2049,114 @@ for (let i = 0; i < n; i++)
 ~~~
 
 Note: 0/1 knapsack is **pseudo-polynomial** (O(nW) depends on the numeric value W, not just input size) and the problem is NP-hard in general. To **recover which items** were chosen, backtrack the table. Variants: **unbounded knapsack** (items reusable — forward 1D loop, like coin change), **subset sum / partition** (knapsack with value=weight). Follow-up: "Fractional knapsack?" Greedy by value/weight ratio (different problem, not DP). "Why reverse loop in 1D?" Forward would let an item be picked multiple times (turning it into unbounded). "Reconstruct items?" Trace back through dp choices.`,
+        },
+        {
+          q: "Fibonacci Series.",
+          answer: `The simplest question that still separates candidates by how they reason about time complexity — there are four meaningfully different implementations.
+
+**1. Naive recursion — O(2ⁿ), exponential, avoid in production:**
+
+~~~js
+function fibNaive(n) {
+  if (n <= 1) return n;
+  return fibNaive(n - 1) + fibNaive(n - 2);
+}
+~~~
+
+This recomputes the same subproblems repeatedly — \`fib(5)\` calls \`fib(3)\` twice, \`fib(2)\` three times, etc.
+
+~~~text
+                fib(5)
+              /        \\
+          fib(4)        fib(3)
+         /      \\      /      \\
+     fib(3)   fib(2) fib(2)  fib(1)
+     /    \\
+  fib(2) fib(1)
+      <- fib(3) and fib(2) are recomputed multiple times, wastefully
+~~~
+
+**2. Memoized recursion — O(n) time, O(n) space:** cache each result the first time it's computed.
+
+~~~js
+function fibMemo(n, memo = {}) {
+  if (n <= 1) return n;
+  if (n in memo) return memo[n];
+  return memo[n] = fibMemo(n - 1, memo) + fibMemo(n - 2, memo);
+}
+~~~
+
+**3. Iterative — O(n) time, O(1) space** (the answer to reach for in practice — no call stack overhead, no recursion depth limit):
+
+~~~js
+function fibIterative(n) {
+  let [prev, curr] = [0, 1];
+  for (let i = 0; i < n; i++) {
+    [prev, curr] = [curr, prev + curr];
+  }
+  return prev;
+}
+~~~
+
+**4. O(1) closed-form (Binet's formula)** — exists but is rarely expected; floating-point precision breaks down for large \`n\`, so it's a "did you know" footnote, not the practical answer.
+
+~~~text
+naive recursion:   O(2ⁿ) time, O(n) stack        <- exponential, bad
+memoized:          O(n) time,  O(n) space         <- good
+iterative:         O(n) time,  O(1) space         <- best in practice
+~~~
+
+Why it matters: this is often used as a warm-up specifically to see whether you *notice* the exponential blowup and fix it, not just produce a correct-looking recursive answer. Follow-up: "What's the recursion depth risk?" — naive/memoized recursion for large \`n\` can hit "Maximum call stack size exceeded"; iterative avoids that entirely.`,
+        },
+        {
+          q: "Factorial.",
+          answer: `\`n!\` = product of all positive integers up to \`n\`. Simple on the surface, but the interview checks whether you handle edge cases and overflow correctly.
+
+**Recursive:**
+
+~~~js
+function factorial(n) {
+  if (n < 0) throw new RangeError("factorial is undefined for negative numbers");
+  if (n === 0 || n === 1) return 1;
+  return n * factorial(n - 1);
+}
+~~~
+
+**Iterative** (avoids recursion depth limits for large \`n\`):
+
+~~~js
+function factorialIterative(n) {
+  if (n < 0) throw new RangeError("factorial is undefined for negative numbers");
+  let result = 1;
+  for (let i = 2; i <= n; i++) result *= i;
+  return result;
+}
+~~~
+
+~~~text
+factorial(5) = 5 * 4 * 3 * 2 * 1 = 120
+
+call stack (recursive):
+factorial(5)
+  -> 5 * factorial(4)
+       -> 4 * factorial(3)
+            -> 3 * factorial(2)
+                 -> 2 * factorial(1)
+                      -> 1  (base case)
+~~~
+
+**Overflow matters in JS specifically:** \`Number\` loses integer precision above \`Number.MAX_SAFE_INTEGER\` (2^53 - 1). \`factorial(20)\` is already \`2,432,902,008,176,640,000\` — right at the edge — and \`factorial(21)+\` silently becomes imprecise. For exact large factorials, use \`BigInt\`:
+
+~~~js
+function factorialBigInt(n) {
+  let result = 1n;
+  for (let i = 2n; i <= BigInt(n); i++) result *= i;
+  return result;
+}
+factorialBigInt(25); // 15511210043330985984000000n  - exact, wouldn't be with Number
+~~~
+
+Why it matters: the base cases (0! = 1, negative input) and the overflow/precision discussion are what interviewers actually listen for — a factorial function that silently returns a wrong (imprecise) answer for large inputs is a real bug class, not just an academic point. Follow-up: "Why is 0! defined as 1?" — it's the empty product (multiplying zero numbers together), consistent with combinatorics formulas like \`nPr\` and \`nCr\` needing it to work for edge cases.`,
         },
       ],
       tip: "DP = recursion + memoization. Always write the brute-force recursive solution first, then identify overlapping subproblems.",

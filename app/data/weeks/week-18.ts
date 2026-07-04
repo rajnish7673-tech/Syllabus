@@ -301,6 +301,77 @@ Trade-offs: per-assignment overhead (avoid in hot loops), and consumers see the 
 
 Why it matters: it's a practical, clean Proxy use case demonstrating the \`set\` trap + \`Reflect\` and the advantage over per-property accessors (covers dynamic keys, one handler). Production angle: a guarded config/state object that rejects invalid analytics payloads or enforces shapes at runtime, catching bad assignments at the source rather than failing later. Follow-up: "set vs Object.defineProperty?" Proxy covers all keys incl. new/dynamic ones with one handler; defineProperty is per-existing-property. "Return value of set trap?" \`true\` = success; \`false\` -> TypeError in strict mode (or throw for a clear message). "Read-only object?" \`set\`/\`deleteProperty\` traps that always reject.`,
         },
+        {
+          q: "Track which properties of a large object are accessed at runtime. How do you use Proxy for this?",
+          answer: `Wrap the object in a \`Proxy\` with a \`get\` trap that logs (or counts) every property read, then delegate to \`Reflect.get\` so the actual value is still returned normally. This is a common technique for finding **dead code / unused fields** in a large config or API-response object without manually auditing every usage site.
+
+~~~js
+function trackAccess(target, label = "object") {
+  const accessed = new Set();
+
+  return new Proxy(target, {
+    get(obj, key, receiver) {
+      accessed.add(key);
+      console.log(\`[access] \${label}.\${String(key)}\`);
+      return Reflect.get(obj, key, receiver);
+    },
+  });
+}
+
+const config = trackAccess({ apiUrl: "...", timeout: 3000, retries: 3, debug: false }, "config");
+
+console.log(config.apiUrl);   // logs: [access] config.apiUrl
+console.log(config.timeout);  // logs: [access] config.timeout
+// 'retries' and 'debug' never touched -> candidates for removal
+~~~
+
+**Adding counts, not just a log line**, makes it useful for a real audit rather than noisy console spam:
+
+~~~js
+function trackAccessCounts(target) {
+  const counts = new Map();
+
+  const proxy = new Proxy(target, {
+    get(obj, key, receiver) {
+      counts.set(key, (counts.get(key) || 0) + 1);
+      return Reflect.get(obj, key, receiver);
+    },
+  });
+
+  return { proxy, getCounts: () => Object.fromEntries(counts) };
+}
+
+const { proxy, getCounts } = trackAccessCounts({ a: 1, b: 2, c: 3 });
+proxy.a; proxy.a; proxy.b;
+console.log(getCounts()); // { a: 2, b: 1 }  -> 'c' never accessed
+~~~
+
+**Extending it for nested objects** — recursively wrap any object-valued property returned by \`get\`, so deep property chains (\`config.api.retries.max\`) are tracked too, not just the top level:
+
+~~~js
+function deepTrackAccess(target, path = "") {
+  return new Proxy(target, {
+    get(obj, key, receiver) {
+      const value = Reflect.get(obj, key, receiver);
+      const fullPath = path ? \`\${path}.\${String(key)}\` : String(key);
+      console.log(\`[access] \${fullPath}\`);
+      return (typeof value === "object" && value !== null)
+        ? deepTrackAccess(value, fullPath)
+        : value;
+    },
+  });
+}
+~~~
+
+~~~text
+proxy.a       -> get trap fires -> log/count "a" -> Reflect.get returns real value
+proxy.b.c     -> get trap fires for "b" -> returns wrapped proxy for b -> get trap fires for "c"
+~~~
+
+Performance note: every property read now goes through the trap, adding overhead — fine for a dev-mode audit or a one-off analysis run, but you'd strip this wrapper in production hot paths (e.g. don't wrap objects accessed inside a tight render loop).
+
+Why it matters: this is a genuinely useful debugging technique — finding unused config keys, auditing which fields of a large API response are actually consumed by the UI, or building a lightweight "access profiler" without instrumenting every call site by hand. Follow-up: "How would you find properties that are set but never read?" — combine a \`set\` trap (records all keys ever assigned) with the \`get\` trap's accessed-set, then diff the two after the app has run for a while.`,
+        },
       ],
       tip: "Proxy is the foundation of Vue 3 reactivity and many state management libraries. Understanding it shows JS depth.",
       rajnishAngle: "",

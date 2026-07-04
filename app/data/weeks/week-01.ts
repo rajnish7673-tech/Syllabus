@@ -821,6 +821,8 @@ The "why": \`Object.create\` is the purest expression of prototypal inheritance 
         "Implicit coercion",
         "Explicit conversion",
         "call vs apply vs bind",
+        "null vs undefined",
+        "NaN and Number.isNaN",
       ],
       questions: [
         {
@@ -1122,6 +1124,124 @@ One more subtlety:
 - \`bind\` is like preparing a reusable wrapper
 
 Why it matters: this comes up constantly in JavaScript interviews because it tests whether you understand function invocation, \`this\`, and callbacks under the hood. Follow-up: "Does bind change the original function?" No, it returns a new one. "Can bind be used multiple times?" Yes, but rebinding a bound function's \`this\` usually doesn't change the original bound \`this\`.`,
+        },
+        {
+          q: "What is the difference between null and undefined in JavaScript?",
+          answer: `Both represent "no value," but they mean different things and come from different sources.
+
+- \`undefined\` -> the engine's default. A variable that was declared but never assigned, a missing function argument, or a missing object property all resolve to \`undefined\`. JavaScript sets this for you.
+- \`null\` -> a deliberate "empty" value. A developer assigns \`null\` explicitly to say "this is intentionally nothing."
+
+~~~js
+let a;
+console.log(a); // undefined - never assigned
+
+function greet(name) {
+  console.log(name); // undefined if called with no argument
+}
+greet();
+
+const obj = { x: 1 };
+console.log(obj.y); // undefined - property doesn't exist
+
+let user = null; // explicitly "no user yet"
+~~~
+
+Type differences:
+
+~~~js
+typeof undefined; // "undefined"
+typeof null;      // "object"  <- famous historical bug in JS, never fixed for backward compatibility
+
+null == undefined;   // true  (loose equality treats them as equal)
+null === undefined;  // false (different types, strict equality says no)
+~~~
+
+~~~text
+undefined  -> "nobody set this yet" (engine-assigned)
+null       -> "somebody set this to nothing" (developer-assigned)
+~~~
+
+Where this matters in real code:
+
+~~~js
+// Nullish coalescing: only falls back on null/undefined, NOT on 0, "", false
+const port = config.port ?? 3000;
+// port = 0 would be KEPT (unlike ||, which would replace 0 with 3000)
+
+// Optional chaining: safely reads deep properties without throwing
+const city = user?.address?.city; // undefined if address is null/undefined, no crash
+
+// API responses often use null for "explicitly empty" fields
+fetch("/api/user").then(res => res.json()).then(data => {
+  if (data.middleName === null) {
+    // field exists in the schema, just has no value
+  }
+});
+~~~
+
+Why it matters: mixing these up causes real bugs — using \`||\` instead of \`??\` accidentally replaces valid falsy values like \`0\` or \`""\`; forgetting optional chaining crashes on API responses where a nested object is \`null\`. Interview follow-up: "Why does \`typeof null === "object"\`?" — it's a bug from the original 1995 JS implementation (null was represented as the null pointer, tagged as an object) kept for backward compatibility.`,
+        },
+        {
+          q: "NaN is appearing in a UI calculation. Walk through how you'd trace and fix it.",
+          answer: `\`NaN\` ("Not a Number") shows up whenever a numeric operation can't produce a valid number — usually from bad input, not a JS bug. My debugging approach is systematic rather than guessing:
+
+**1. Reproduce and isolate.** Add a \`console.log\` right before the calculation to inspect the actual values and their types:
+
+~~~js
+console.log(price, typeof price, quantity, typeof quantity);
+const total = price * quantity;
+~~~
+
+Common culprits in a UI calculation:
+
+~~~js
+Number("");        // NaN  - empty input field
+Number(undefined);  // NaN  - unset state before data loads
+Number("12,000");  // NaN  - formatted string with a comma
+0 / 0;              // NaN  - actual math indeterminate
+parseInt("abc");    // NaN  - unparseable string
+"5" * "two";        // NaN  - non-numeric operand
+~~~
+
+**2. Detect it correctly.** \`NaN\` has a famous quirk: it's the only JS value not equal to itself.
+
+~~~js
+NaN === NaN;        // false!
+isNaN("hello");      // true  - but coerces first, unreliable
+Number.isNaN("hello"); // false - does NOT coerce, checks the actual type+value
+Number.isNaN(NaN);     // true
+~~~
+
+Always use \`Number.isNaN()\` in real code — the global \`isNaN()\` coerces its argument to a number first, so \`isNaN("hello")\` is \`true\` even though \`"hello"\` was never a number to begin with. That's misleading when you're trying to validate input.
+
+**3. Fix at the source, not the symptom.** Guard the input before the math runs, don't just hide NaN in the render:
+
+~~~js
+function toSafeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isNaN(n) ? fallback : n;
+}
+
+const total = toSafeNumber(price) * toSafeNumber(quantity);
+~~~
+
+For form inputs specifically, validate at the boundary (on change/blur), not deep inside a calculation function three layers away — that's where the actual bad value entered the system.
+
+~~~text
+Input (string, maybe malformed)
+   │
+   ▼
+toSafeNumber()  <-- validate HERE, at the boundary
+   │
+   ▼
+Calculation (guaranteed real numbers)
+   │
+   ▼
+Render (never sees NaN)
+~~~
+
+Why it matters: NaN silently propagates — \`NaN + 5\` is \`NaN\`, \`NaN.toFixed(2)\` is \`"NaN"\`, so it often surfaces far from where it was introduced (e.g., a price showing "₹NaN" in a cart summary). Tracing backward from the render to the first invalid input, and fixing validation at that boundary, is faster than sprinkling defensive checks everywhere downstream. Follow-up: "Why is \`typeof NaN\` equal to \`"number"\`?" — because NaN is part of the IEEE 754 floating-point spec, it's a special numeric value, not a separate type.`,
         },
       ],
       tip: "Use === by default. Reach for explicit Number/String/Boolean conversion when code would otherwise depend on coercion magic.",

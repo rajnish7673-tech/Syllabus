@@ -219,6 +219,72 @@ detect (Perf panel / Long Tasks API) ─▶ attribute (Bottom-Up by domain)
 
 Why it matters: long tasks are the direct cause of poor INP/jank; a senior answer covers **both detection (lab + field attribution) and the full fix toolbox**, then verification. Production angle: Performance panel Bottom-Up revealed third-party ad/analytics scripts and a heavy feed-processing loop as the long tasks on the article page; fixes were Partytown for the scripts, yielding in the loop, and virtualizing the feed — verified by TBT dropping in CI and INP improving in CrUX. Follow-up: "Yield vs Worker?" Yield keeps DOM-touching work on-thread but cooperative; Worker removes pure compute entirely. "How verify in the field?" RUM INP with attribution before/after.`,
         },
+        {
+          q: "A long forEach loop freezes the browser tab. How do you chunk the work without a Web Worker?",
+          answer: `\`forEach\` runs every iteration synchronously in one go — if it's processing thousands of items, the whole thing is one long task that blocks the main thread, freezing scroll/clicks/paint until it finishes. The constraint "without a Web Worker" forces you to break the loop into **smaller chunks and yield control back to the browser between them**, rather than offloading the work elsewhere.
+
+**setTimeout batching** — process a slice, then schedule the next slice on a fresh macrotask so the browser gets a chance to paint/handle input in between:
+
+~~~js
+function processInChunks(items, chunkSize, processFn, onDone) {
+  let index = 0;
+
+  function processChunk() {
+    const end = Math.min(index + chunkSize, items.length);
+    for (; index < end; index++) {
+      processFn(items[index]);
+    }
+    if (index < items.length) {
+      setTimeout(processChunk, 0); // yield to the event loop, then continue
+    } else {
+      onDone?.();
+    }
+  }
+
+  processChunk();
+}
+
+processInChunks(hugeArray, 200, (item) => renderRow(item), () => console.log("done"));
+~~~
+
+**requestIdleCallback** — even better when the work isn't urgent: it runs your chunk only when the browser has spare idle time, and gives you a deadline so you can stop early if time runs out:
+
+~~~js
+function processWithIdleCallback(items, processFn) {
+  let index = 0;
+
+  function step(deadline) {
+    while (index < items.length && deadline.timeRemaining() > 0) {
+      processFn(items[index]);
+      index++;
+    }
+    if (index < items.length) {
+      requestIdleCallback(step); // still work left -> wait for next idle window
+    }
+  }
+
+  requestIdleCallback(step);
+}
+~~~
+
+**Modern equivalent — \`scheduler.yield()\`** (where supported) is purpose-built for this and reads more clearly than a \`setTimeout(fn, 0)\` hack:
+
+~~~js
+async function processWithYield(items, processFn) {
+  for (let i = 0; i < items.length; i++) {
+    processFn(items[i]);
+    if (i % 100 === 0) await scheduler.yield(); // hand control back periodically
+  }
+}
+~~~
+
+~~~text
+forEach (blocking):        [=========== one long task ===========]  <- tab frozen
+chunked with yield:        [==] yield [==] yield [==] yield [==]    <- browser can paint/respond between chunks
+~~~
+
+Why "no Web Worker" changes the answer: a Worker removes the work from the main thread entirely (true parallelism), but chunking just **interleaves** it with everything else the main thread needs to do — the total work still takes the same wall-clock time or slightly more (there's now scheduling overhead), but the tab stays responsive throughout instead of freezing for one long stretch. Choose \`requestIdleCallback\`/\`scheduler.yield()\` for non-urgent background work, and \`setTimeout(fn, 0)\` as the safe fallback where idle callbacks aren't available or timing must be more predictable. Follow-up: "Why not just use a Worker if it's better?" — a Worker can't touch the DOM directly, so it only works if the per-item processing is pure computation; if each iteration needs to read/write the DOM, chunking on the main thread is often simpler than message-passing results back from a Worker.`,
+        },
       ],
       tip: "Tree shaking needs ES modules (import/export). CommonJS (require) cannot be tree-shaken.",
       rajnishAngle:
@@ -809,6 +875,43 @@ High-level mental model of popular tools:
 The senior answer doesn't need every internal detail; it should show that bundlers solve dependency graphing, transformation, chunking, and optimization.
 
 Why it matters: understanding bundlers helps when debugging source maps, alias resolution, code splitting, and unexpected bundle growth. Follow-up: "Why is Vite dev fast?" Because it serves modules on demand with ESM instead of prebundling the whole app up front.`,
+        },
+        {
+          q: "A function runs fine in dev but throws in production after minification. What could cause this and how do you debug it?",
+          answer: `Minifiers rename variables, mangle property names, and drop whitespace/dead code — code that only *works by accident* in dev (relying on unminified structure) breaks once that transformation runs. The main culprits:
+
+**1. Reliance on \`Function.prototype.toString()\` or \`fn.name\`** — minifiers rename local variables and sometimes function names, so any code that inspects a function's name or serialized source at runtime gets different (often mangled or empty) results in production:
+~~~js
+function fetchUserData() {}
+console.log(fetchUserData.name); // "fetchUserData" in dev
+// after minification, could be "n" or similar if not preserved -> logic depending on this breaks
+~~~
+
+**2. Property mangling on object literals** (rare with default configs, but real if a minifier is set to mangle properties, or with certain class-property/private-field transforms) — code that accesses a property by string key elsewhere (e.g. \`obj["someProp"]\`) can desync from a renamed \`obj.someProp\`.
+
+**3. Dead-code elimination removing something with a side effect** the bundler didn't know was load-bearing — e.g. a module that self-registers with a global registry purely via a side-effecting import, which tree-shaking assumes is safe to drop because nothing appears to "use" its exports.
+
+**4. \`"use strict"\` behavior differences** — minified/bundled output is almost always strict mode even if your source file wasn't; code relying on sloppy-mode behavior (e.g. \`this\` being the global object in an unbound function call) throws in production where it silently worked in dev.
+
+**5. Order-of-execution / hoisting assumptions** across module boundaries that a bundler is allowed to reorder or scope-hoist differently than the dev server did.
+
+**Debugging approach:**
+1. **Reproduce with a production build locally** (\`next build && next start\`, or the bundler's production mode) rather than guessing from the stack trace alone — dev-only bugs need a dev-only reproduction of the actual failure.
+2. **Enable source maps for the production build** and upload them to your error tracker (Sentry etc.) so the stack trace resolves back to original file/line/variable names instead of \`n.default.map is not a function\` in minified code.
+~~~js
+// next.config.js
+module.exports = { productionBrowserSourceMaps: true };
+~~~
+3. **Bisect the minifier config** — temporarily disable specific transforms (property mangling, aggressive dead-code elimination) to see which one makes the error disappear; that isolates the exact optimization at fault.
+4. **Search for \`.name\`, \`.toString()\` on functions, or dynamic string-based property access** (\`obj[computedKey]\`) in the suspect module — these are the most common minification-sensitive patterns.
+
+~~~text
+dev:  readable names, unminified, sourcemap-free stack traces match source 1:1
+prod: mangled names, dead code stripped, strict mode enforced
+      -> bug surfaces only when code depended on dev-only characteristics
+~~~
+
+Why it matters: "works in dev, breaks in prod" bugs erode trust in a release process, and most of them trace back to code that unintentionally depended on unminified structure (name-based reflection) or sloppy-mode leniency. Senior engineers reproduce with an actual production build and readable source maps rather than debugging blind against mangled stack traces. Follow-up: "How do you prevent this class of bug going forward?" — run your production build (not just dev) in CI/E2E smoke tests before merge, since these bugs are invisible in a dev-mode test run.`,
         },
       ],
       tip: "Keep the mental model simple: transpile syntax, bundle modules, minify output.",

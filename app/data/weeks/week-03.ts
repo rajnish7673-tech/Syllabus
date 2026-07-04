@@ -7,8 +7,221 @@ export const week03: Week = {
   topics: [
     {
       title: "Rendering & Reconciliation",
-      subtopics: ["Virtual DOM diffing", "React Fiber", "Reconciliation algorithm", "Keys"],
+      subtopics: ["Virtual DOM diffing", "React Fiber", "Reconciliation algorithm", "Keys", "What is React", "Functional vs class components", "Component lifecycle"],
       questions: [
+        {
+          q: "What is React, and what are its key features?",
+          answer: `React is a **declarative, component-based JavaScript library** for building user interfaces. Instead of imperatively mutating the DOM step by step ("find this element, change its text, add this class"), you describe **what the UI should look like for a given state**, and React figures out how to make the real DOM match that description.
+
+Key features that come up in almost every interview:
+
+- **Declarative** — you write \`<Counter count={n} />\` describing the desired output; React handles the imperative DOM operations to get there. Contrast with vanilla JS/jQuery-style code that manually walks and mutates the DOM.
+- **Component-based** — UI is broken into independent, reusable pieces (components) that each manage their own logic/markup and compose into larger trees.
+- **Virtual DOM** — React keeps a lightweight in-memory representation of the UI, diffs it against the previous version on updates, and applies only the minimal necessary changes to the real DOM (see the Virtual DOM question for the mechanics).
+- **One-way (unidirectional) data flow** — data flows down from parent to child via props; children communicate back up via callbacks. This makes state changes predictable and easy to trace, compared to two-way binding where any part of the tree could mutate shared state directly.
+- **JSX** — a syntax extension that lets you write HTML-like markup inside JavaScript, compiled to \`React.createElement()\` calls under the hood. It's not required (you can call \`createElement\` directly) but makes component trees far more readable.
+
+~~~jsx
+// declarative: describe the UI for this state
+function Counter({ count, onIncrement }) {
+  return (
+    <div>
+      <p>Count: {count}</p>
+      <button onClick={onIncrement}>+</button>
+    </div>
+  );
+}
+// compare to imperative DOM manipulation:
+// const div = document.createElement('div');
+// const p = document.createElement('p'); p.textContent = 'Count: ' + count;
+// ...manually append, manually update on every change
+~~~
+
+~~~text
+state changes -> React re-renders the description -> diffs vs previous -> patches only what changed in the real DOM
+~~~
+
+Why it matters: this is usually the opening question in a round, and interviewers are listening for whether you can explain *why* React exists (the shift from imperative DOM manipulation to declarative UI) rather than just reciting buzzwords. Follow-up: "What problem was React solving when Facebook created it?" — keeping a complex, frequently-updating UI (the News Feed) in sync with state was becoming unmanageable with direct DOM manipulation; React's diffing model made that tractable.`,
+        },
+        {
+          q: "Explain the difference between functional and class components.",
+          answer: `Both are ways to define a React component, but they differ in syntax, how they hold state, and how they hook into lifecycle behavior. **Functional components with Hooks are the modern default** — class components are mostly seen in legacy codebases now.
+
+~~~jsx
+// Class component
+class Counter extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { count: 0 };
+    this.increment = this.increment.bind(this); // manual 'this' binding needed
+  }
+  componentDidMount() {
+    console.log("mounted");
+  }
+  increment() {
+    this.setState({ count: this.state.count + 1 });
+  }
+  render() {
+    return <button onClick={this.increment}>{this.state.count}</button>;
+  }
+}
+
+// Functional component (Hooks) - equivalent behavior
+function Counter() {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    console.log("mounted");
+  }, []);
+  return <button onClick={() => setCount(count + 1)}>{count}</button>;
+}
+~~~
+
+Key differences:
+
+~~~text
+                class component              functional component
+state           this.state + this.setState   useState hook
+lifecycle       componentDidMount, etc.      useEffect (unifies mount/update/unmount)
+'this'          exists, needs binding        no 'this' at all - just closures
+reuse logic     HOCs / render props          custom hooks
+boilerplate     more (constructor, bind)     less, more concise
+error boundary  ONLY class components can    (still no hook equivalent as of React 19)
+                implement one
+~~~
+
+Why functional + Hooks won out: no more \`this\` binding footguns, logic reuse via custom hooks is far cleaner than HOC "wrapper hell," and related logic (subscribe + cleanup) lives together in one \`useEffect\` instead of being split across \`componentDidMount\`/\`componentDidUpdate\`/\`componentWillUnmount\`.
+
+One genuine gap: **error boundaries still require a class component** (\`static getDerivedStateFromError\` / \`componentDidCatch\`) — there's no hook equivalent, so most codebases keep exactly one small class component for this purpose and write everything else as functions.
+
+Why it matters: interviewers want to hear that you understand *why* the ecosystem moved to Hooks (not just "hooks are newer"), and that you know the one place class components remain necessary. Follow-up: "Can you use Hooks inside a class component?" No — Hooks only work in function components (or other custom hooks); you can't call \`useState\` inside a class.`,
+        },
+        {
+          q: "How does the React component lifecycle work?",
+          answer: `Every component goes through three broad phases — **mount** (first render), **update** (re-render due to new props/state), and **unmount** (removed from the tree). Class components expose this via named lifecycle methods; function components unify most of it into \`useEffect\`.
+
+~~~text
+MOUNT                     UPDATE                      UNMOUNT
+constructor()              (props/state change)
+render()                   render()
+componentDidMount()         componentDidUpdate()        componentWillUnmount()
+~~~
+
+Class component mapping:
+
+~~~jsx
+class Widget extends React.Component {
+  constructor(props) { super(props); this.state = { data: null }; }     // MOUNT: setup
+  componentDidMount() { this.subscription = subscribe(this.onData); }    // MOUNT: side effects, fetch, subscribe
+  componentDidUpdate(prevProps) {                                       // UPDATE: react to changed props
+    if (prevProps.id !== this.props.id) this.fetchData(this.props.id);
+  }
+  componentWillUnmount() { this.subscription.unsubscribe(); }            // UNMOUNT: cleanup
+  render() { return <div>{this.state.data}</div>; }
+}
+~~~
+
+Functional equivalent with \`useEffect\` — the three phases collapse into one hook, where the **effect body** runs after mount/update and the **returned cleanup function** runs before unmount (and before the next effect run):
+
+~~~jsx
+function Widget({ id }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    const subscription = subscribe(id, setData); // mount + re-run on id change (like componentDidMount + componentDidUpdate)
+    return () => subscription.unsubscribe();      // cleanup (like componentWillUnmount)
+  }, [id]);
+
+  return <div>{data}</div>;
+}
+~~~
+
+~~~text
+useEffect(fn, [id]) behavior:
+  mount:        run fn
+  id changes:   run cleanup from previous fn, then run fn again
+  unmount:      run cleanup from the last fn
+~~~
+
+Why the functional model is cleaner: related setup/teardown logic (subscribe + unsubscribe, add listener + remove listener) lives in **one place** instead of being split across \`componentDidMount\` and \`componentWillUnmount\`, which is a common source of bugs in class components (forgetting to mirror a mount-time side effect in the unmount cleanup).
+
+Why it matters: this question checks whether you can map the old (still-common-in-legacy-code) mental model to the Hooks model, since many teams have a mix of both during migration. Follow-up: "What's the Hook equivalent of \`shouldComponentUpdate\`?" — wrap the component in \`React.memo\` (with an optional custom comparison function) to skip re-renders when props are shallow-equal.`,
+        },
+        {
+          q: "What is the Virtual DOM, and how does it improve performance?",
+          answer: `The Virtual DOM (VDOM) is a lightweight JavaScript object tree that mirrors the structure of the real DOM. When state changes, React builds a **new** VDOM tree, **diffs** it against the previous one (reconciliation), and applies only the **minimal set of real DOM mutations** needed — instead of re-rendering everything from scratch.
+
+~~~jsx
+// state changes from count=0 to count=1
+<div>
+  <h1>Title</h1>
+  <p>Count: {count}</p>
+</div>
+~~~
+
+~~~text
+old VDOM tree            new VDOM tree             diff result
+div                       div                       div: unchanged
+ h1 "Title"                h1 "Title"                 h1: unchanged (skip)
+ p  "Count: 0"             p  "Count: 1"               p: text changed -> ONE real DOM update
+~~~
+
+Why this matters for performance: **direct DOM manipulation is expensive** — every read/write can trigger layout recalculation and repaint, and doing this naively for every single state change (re-rendering the whole subtree into the real DOM) would be slow. By diffing in-memory JS objects first (cheap) and batching the resulting real DOM writes (expensive) into one minimal pass, React avoids unnecessary touches to the actual DOM.
+
+~~~text
+without VDOM (naive):  state change -> rebuild entire real DOM subtree -> many layout/paint triggers
+with VDOM:              state change -> diff cheap JS objects -> ONE targeted real DOM patch -> single layout/paint pass
+~~~
+
+Important nuance interviewers probe: **the Virtual DOM itself isn't "faster than the DOM"** in some magical absolute sense — a hand-optimized imperative DOM update for one specific case can always beat it. What the VDOM buys you is a **general-purpose optimization applied automatically**, so you get near-optimal DOM updates *without* having to hand-write minimal-diff imperative code for every single UI change yourself. It trades a small amount of diffing overhead for a large reduction in unnecessary DOM work, and removes the burden of manual DOM bookkeeping from the developer.
+
+Why it matters: the honest, senior-level framing is "VDOM enables efficient, automatic, minimal DOM updates without manual optimization" rather than "VDOM is always faster than the DOM," which is a common misconception. Follow-up: "Is React the fastest possible way to update the DOM?" No — hand-written vanilla JS can be faster for a specific known case; VDOM's win is developer productivity plus good-enough performance by default, generalized across the whole app.`,
+        },
+        {
+          q: "How does React's rendering process work from state update to UI update?",
+          answer: `A full render cycle has four stages: **trigger -> render phase -> commit phase -> browser paint**. Understanding this end-to-end is what separates "I know Hooks" from "I understand how React actually works."
+
+~~~text
+1. TRIGGER    setState() / dispatch() called -> React schedules an update
+2. RENDER     React calls your component function(s) again, builds a new
+              element tree, diffs against the previous tree (reconciliation)
+              -> interruptible, must be a PURE calculation, no side effects
+3. COMMIT     React applies the computed DOM mutations: inserts, updates,
+              removes real DOM nodes. Runs useLayoutEffect synchronously
+              here, before the browser paints.
+4. PAINT      Browser paints the updated screen. useEffect callbacks run
+              AFTER paint, asynchronously (doesn't block the visual update)
+~~~
+
+~~~jsx
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  useLayoutEffect(() => {
+    console.log("before paint"); // runs in the commit phase, synchronously
+  });
+
+  useEffect(() => {
+    console.log("after paint"); // runs after the browser has painted
+  });
+
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+  // clicking: TRIGGER (setCount) -> RENDER (new tree with count+1, diffed)
+  //           -> COMMIT (button's textContent updated in real DOM, useLayoutEffect runs)
+  //           -> PAINT (screen updates) -> useEffect runs
+}
+~~~
+
+**Batching**: React 18+ batches multiple \`setState\` calls that happen within the same event handler (and now even inside promises/timeouts/native event handlers, unlike React 17) into a **single** render+commit cycle, so calling \`setCount\` three times in one click handler still only triggers one re-render, not three.
+
+~~~text
+onClick={() => { setCount(c => c+1); setFlag(f => !f); setOther(...); }}
+React 18: all three updates batched -> ONE render + ONE commit, not three
+~~~
+
+Why the render/commit split matters: because the **render phase can be paused, thrown away, or restarted** (e.g. a higher-priority update interrupts it — this is what Fiber enables), your component function must be pure with no side effects. Side effects belong in the **commit phase** territory — which is exactly what \`useEffect\`/\`useLayoutEffect\` are for; they run only once React has committed, not during the (possibly discarded) render calculation.
+
+Why it matters: this question tests the full mental model in one shot — trigger, pure render, DOM commit, and paint-relative effect timing — which is exactly what's needed to reason correctly about \`useEffect\` vs \`useLayoutEffect\` timing bugs. Follow-up: "Why can't you call \`setState\` during render?" — render must be pure; calling \`setState\` there would trigger another render synchronously inside the current one, risking infinite loops, and violates the "render is just a calculation" contract Fiber depends on.`,
+        },
         {
           q: "How does React's reconciliation algorithm work?",
           answer: `Reconciliation is how React decides what changed between the previous render's element tree and the new one, and computes the minimal set of DOM mutations. A general tree-diff is O(n³); React makes it O(n) with two heuristics:
@@ -241,6 +454,269 @@ Common interview mistakes:
 Strong interview answer:
 "I treat a custom hook like a small internal API. It should share stateful behavior, have explicit inputs, predictable outputs, and proper cleanup without coupling callers to internal implementation details."`,
         },
+        {
+          q: "Explain useRef in depth. How is it different from useState?",
+          answer: `\`useRef\` returns a **mutable container object** (\`{ current: value }\`) that persists across renders. The critical difference from \`useState\`: **mutating a ref does NOT trigger a re-render**, while \`setState\` always schedules one.
+
+~~~jsx
+function Example() {
+  const renderCount = useRef(0);
+  const [count, setCount] = useState(0);
+
+  renderCount.current++; // mutate directly - no re-render triggered by this line
+  console.log("rendered", renderCount.current, "times");
+
+  return <button onClick={() => setCount(count + 1)}>{count}</button>;
+  // clicking causes a re-render (because of setCount), and DURING that
+  // render renderCount.current increments too - but incrementing the ref
+  // itself never CAUSES a render
+}
+~~~
+
+~~~text
+useState:  set value -> React schedules re-render -> component function runs again -> new value visible in JSX
+useRef:    set .current -> value updates immediately -> NO re-render -> JSX doesn't reflect it until something else re-renders
+~~~
+
+Three common uses of \`useRef\`:
+
+**1. Accessing DOM nodes directly** (the most common use):
+~~~jsx
+function TextInput() {
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current.focus(); }, []); // imperative DOM access
+  return <input ref={inputRef} />;
+}
+~~~
+
+**2. Storing a mutable value that survives re-renders but shouldn't trigger one** (an "instance variable" for function components) — e.g. a timer ID, a previous value for comparison, or a flag:
+~~~jsx
+function Timer() {
+  const intervalRef = useRef(null);
+  useEffect(() => {
+    intervalRef.current = setInterval(() => console.log("tick"), 1000);
+    return () => clearInterval(intervalRef.current);
+  }, []);
+}
+~~~
+
+**3. Keeping the latest value accessible inside a stale closure** (common fix for the "stale closure in useEffect/setTimeout" bug):
+~~~jsx
+function Chat({ message }) {
+  const latestMessage = useRef(message);
+  useEffect(() => { latestMessage.current = message; }); // no deps - runs every render, always fresh
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log(latestMessage.current); // always reads the CURRENT message, not a stale one
+    }, 5000);
+    return () => clearInterval(id);
+  }, []); // empty deps - this effect's closure would otherwise be stuck on the first message
+}
+~~~
+
+~~~text
+useState:  "I want the UI to reflect this value" -> triggers re-render
+useRef:    "I want to remember this value without the UI caring" -> silent mutation
+~~~
+
+Why it matters: mixing these up causes two opposite bugs — using \`useState\` for something that doesn't need to trigger a re-render wastes renders (e.g. a scroll position tracked purely for internal logic), while using \`useRef\` for something that should update the UI silently fails (the ref updates but the screen doesn't change until an unrelated re-render happens to occur). Follow-up: "Does changing \`ref.current\` during render cause issues?" — yes, mutating a ref during the render phase (not inside an effect/event handler) breaks the "render must be pure" contract and can cause inconsistent behavior under concurrent rendering.`,
+        },
+        {
+          q: "How do useEffect dependencies work? What are some common mistakes developers make?",
+          answer: `The dependency array tells React **when to re-run the effect**: React compares each value in the array to its value from the previous render (shallow \`Object.is\` comparison per item); if any changed, the effect re-runs (cleanup from the old run first, then the new run).
+
+~~~jsx
+useEffect(() => { /* effect */ }, [a, b]);
+// [a, b] unchanged since last render -> skip
+// a or b changed (by Object.is)      -> run cleanup from last time, then run effect again
+~~~
+
+~~~text
+no array:        runs after EVERY render (rarely what you want)
+[]  empty array: runs once after mount, cleanup once on unmount
+[a, b]:          runs on mount, and again whenever a or b changes
+~~~
+
+**Mistake 1 — missing dependencies (stale closures).** Omitting a value the effect actually uses means the effect closes over an old version of it:
+
+~~~jsx
+// ❌ 'count' is used but omitted from deps -> effect always sees count=0
+useEffect(() => {
+  const id = setInterval(() => console.log(count), 1000); // stale closure
+  return () => clearInterval(id);
+}, []); // missing 'count'
+
+// ✅ include it, or use the functional updater form to avoid needing it at all
+useEffect(() => {
+  const id = setInterval(() => setCount(c => c + 1), 1000); // doesn't read 'count' directly
+  return () => clearInterval(id);
+}, []);
+~~~
+
+**Mistake 2 — over-including objects/functions recreated every render**, causing the effect to re-run on every single render even though "nothing really changed":
+
+~~~jsx
+// ❌ options is a NEW object every render -> effect re-runs every render
+const options = { limit: 10 };
+useEffect(() => { fetchData(options); }, [options]);
+
+// ✅ move the literal inside the effect, or memoize it
+useEffect(() => { fetchData({ limit: 10 }); }, []); // no external object dependency at all
+~~~
+
+**Mistake 3 — ignoring the exhaustive-deps lint warning** by disabling it instead of fixing the actual issue. The lint rule is (almost always) correct — silencing it hides a real stale-closure bug rather than fixing it.
+
+**Mistake 4 — forgetting cleanup**, causing duplicate subscriptions/listeners to pile up across re-runs:
+~~~jsx
+// ❌ no cleanup - a new listener is added every time 'id' changes, old ones never removed
+useEffect(() => {
+  window.addEventListener("resize", handleResize);
+}, [id]);
+
+// ✅ always clean up what you set up
+useEffect(() => {
+  window.addEventListener("resize", handleResize);
+  return () => window.removeEventListener("resize", handleResize);
+}, [id]);
+~~~
+
+~~~text
+effect sets something up (subscribe, listener, timer, fetch)
+   -> MUST return a cleanup that tears down the SAME thing
+   -> otherwise it accumulates on every dependency change
+~~~
+
+Why it matters: nearly every "weird React bug" report — stale data in a callback, duplicate event listeners, an effect firing every render for no obvious reason — traces back to one of these four dependency mistakes. Follow-up: "How do you avoid needing a value in deps at all?" — use the functional updater form of \`setState\` (\`setCount(c => c + 1)\`) or a ref for values you need to read but that shouldn't trigger a re-run.`,
+        },
+        {
+          q: "Write a React component that fetches data from an API and displays it using useEffect.",
+          answer: `The pattern needs three pieces of state (data, loading, error), a fetch triggered from \`useEffect\`, and — critically — a cleanup guard so a slow, stale request can't overwrite state after the component has moved on to a different \`id\` or unmounted.
+
+~~~jsx
+function UserProfile({ userId }) {
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let isActive = true; // cleanup flag - prevents a stale response from setting state
+    const controller = new AbortController();
+
+    async function fetchUser() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(\`/api/users/\${userId}\`, { signal: controller.signal });
+        if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
+        const data = await res.json();
+        if (isActive) setUser(data); // only update state if still the current effect
+      } catch (err) {
+        if (isActive && err.name !== "AbortError") setError(err.message);
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    }
+
+    fetchUser();
+
+    return () => {
+      isActive = false;   // mark this run's result as stale
+      controller.abort(); // cancel the in-flight request
+    };
+  }, [userId]); // re-fetch whenever userId changes
+
+  if (isLoading) return <p>Loading...</p>;
+  if (error) return <p>Error: {error}</p>;
+  return <div>{user.name}</div>;
+}
+~~~
+
+~~~text
+mount / userId changes:
+  isActive = true, fetch starts
+  --- userId changes again before fetch resolves ---
+  cleanup runs: isActive = false, abort() cancels the old request
+  new effect run starts: isActive = true again, new fetch starts
+  old fetch's .then/.catch runs but isActive is false -> state update SKIPPED (stale, ignored)
+~~~
+
+Why both \`isActive\` and \`AbortController\` matter: \`AbortController\` actually **cancels the network request** (saves bandwidth, stops the server-perceived load); the \`isActive\` flag is a **belt-and-suspenders guard** in case the promise still resolves/rejects despite the abort (some browsers/environments don't reject cleanly on abort) — without it you risk the classic React warning "Can't perform a state update on an unmounted component," or worse, silently rendering stale data from a superseded request.
+
+In practice, a library like **React Query / SWR** handles all of this (loading/error state, cancellation, caching, refetch-on-param-change) — this hand-rolled version is what interviewers want to see you can build from first principles, understanding exactly why each piece exists.
+
+Why it matters: this is one of the most common "write some code" prompts in a React round, and the loading/error states plus the stale-response guard are exactly what separates a working demo from a component that's safe to ship. Follow-up: "What happens without the cleanup function?" — if the component unmounts or \`userId\` changes before the fetch resolves, you'd get a state update on a stale/unmounted render, either throwing a warning or showing the wrong user's data.`,
+        },
+        {
+          q: "useContext basic implementation.",
+          answer: `\`useContext\` reads the current value of a Context from the nearest matching \`Provider\` above it in the tree, re-rendering the component whenever that value changes — without needing to thread props down manually through every intermediate level (avoiding prop drilling).
+
+~~~jsx
+// 1. create the context (usually in its own file)
+const ThemeContext = createContext("light"); // "light" is the default if no Provider is found
+
+// 2. provide a value somewhere up the tree
+function App() {
+  const [theme, setTheme] = useState("dark");
+  return (
+    <ThemeContext.Provider value={theme}>
+      <Toolbar />
+    </ThemeContext.Provider>
+  );
+}
+
+// 3. consume it anywhere below, no matter how deep
+function Toolbar() {
+  return <ThemedButton />; // doesn't need to know about theme at all
+}
+
+function ThemedButton() {
+  const theme = useContext(ThemeContext); // reads directly from the nearest Provider
+  return <button className={theme}>Click</button>;
+}
+~~~
+
+~~~text
+App (Provider value="dark")
+ └─ Toolbar            <- doesn't touch theme, no prop drilling
+     └─ ThemedButton   <- useContext(ThemeContext) reads "dark" directly
+~~~
+
+**Building a small custom hook around it** is standard practice — it hides the raw context and gives a nicer API plus a safety check for "used outside its Provider":
+
+~~~jsx
+const AuthContext = createContext(undefined);
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const login = (u) => setUser(u);
+  const logout = () => setUser(null);
+  return (
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (ctx === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider"); // fail loudly, not silently with undefined
+  }
+  return ctx;
+}
+
+// usage anywhere under <AuthProvider>:
+function Header() {
+  const { user, logout } = useAuth();
+  return user ? <button onClick={logout}>Logout {user.name}</button> : <LoginButton />;
+}
+~~~
+
+**The performance gotcha**: every component that calls \`useContext(SomeContext)\` re-renders whenever that context's value changes — **even if the component only cares about part of the value**. Passing a big object as the context value (like \`{ user, login, logout }\` above) means any consumer re-renders on any field change. Splitting into multiple smaller contexts (e.g. a separate \`UserContext\` and \`ThemeContext\`), or memoizing the provided value, mitigates this.
+
+Why it matters: \`useContext\` is the standard escape hatch from prop drilling, but pairing it with a custom hook (for a clean API + the "used outside Provider" guard) and being aware of its re-render-everything-that-reads-it behavior is what a senior answer covers beyond the basic mechanics. Follow-up: "Does useContext cause the whole app to re-render?" — no, only components that actually call \`useContext\` on that specific context re-render; siblings/parents that don't consume it are unaffected.`,
+        },
       ],
       tip: "Know the rules of hooks cold. Senior candidates are expected to know the 'why', not just the 'what'.",
       rajnishAngle:
@@ -351,6 +827,105 @@ Other tools: the **Profiler API** (\`<Profiler onRender>\`) for programmatic tim
 The method (senior framing): **measure -> identify the worst offender -> fix -> re-measure.** Don't guess. Typical fixes the Profiler reveals: memoize a hot child + stabilize props, colocate/split state to shrink render scope, virtualize long lists, defer non-urgent updates with \`useTransition\`/\`useDeferredValue\`, code-split heavy components.
 
 Production angle: profiling an article feed under CPU throttling exposed that an unrelated header state change re-rendered all feed rows — fixed by state colocation + memoized rows, improving INP. Follow-up: "How do you fix a long task you found?" Break it up / yield (\`scheduler.yield\`), move work off-main-thread (Web Worker), or defer it as non-urgent.`,
+        },
+        {
+          q: "React.memo vs Pure Component.",
+          answer: `Both skip a re-render when props haven't meaningfully changed, using a **shallow comparison** — the difference is just which component style they apply to.
+
+- **\`React.memo\`** — a higher-order component that wraps a **function component**.
+- **\`PureComponent\`** — a base class you extend instead of \`React.Component\`, for **class components**. It implements \`shouldComponentUpdate\` with a shallow prop/state comparison automatically.
+
+~~~jsx
+// Function component
+const Row = React.memo(function Row({ item }) {
+  return <li>{item.name}</li>;
+});
+// skips re-render if 'item' is shallow-equal to the previous render's 'item'
+
+// Class component
+class Row extends React.PureComponent {
+  render() {
+    return <li>{this.props.item.name}</li>;
+  }
+}
+// PureComponent auto-implements: shouldComponentUpdate = shallow compare props AND state
+~~~
+
+Key differences beyond "function vs class":
+
+~~~text
+                    React.memo                      PureComponent
+applies to          function components              class components
+compares            props only (by default)          props AND state
+custom comparator   yes - memo(Component, areEqual)   override shouldComponentUpdate yourself
+~~~
+
+\`React.memo\` accepts an optional second argument for a **custom comparison function**, giving finer control than \`PureComponent\`'s fixed shallow-compare-everything behavior:
+
+~~~jsx
+const Row = React.memo(
+  function Row({ item, onSelect }) {
+    return <li onClick={() => onSelect(item.id)}>{item.name}</li>;
+  },
+  (prevProps, nextProps) => prevProps.item.id === nextProps.item.id
+  // only re-render if the item's id actually changed, ignore other prop changes
+);
+~~~
+
+Both are **shallow** comparisons — they check reference equality per prop/state field, one level deep. Neither deep-compares nested objects/arrays, so passing a new object literal or inline arrow function as a prop every render defeats the optimization regardless of which one you use (see the next question).
+
+Why it matters: this question checks whether you know the shallow-comparison mechanism is identical in spirit across both component styles, just wired up differently — \`PureComponent\` is a fixed built-in comparison, \`React.memo\` is more flexible with a custom comparator option. Follow-up: "Does PureComponent deep compare?" No — shallow only, same limitation as \`React.memo\`'s default behavior.`,
+        },
+        {
+          q: "How does React.memo work, and when can it actually hurt performance?",
+          answer: `\`React.memo\` wraps a component so React **skips re-rendering it** if its props are shallow-equal to the previous render's props. It sounds like a free win, but it has real costs and common failure modes that make it actively harmful when misapplied.
+
+**How it works:**
+~~~jsx
+const ExpensiveRow = React.memo(function ExpensiveRow({ data }) {
+  console.log("rendering", data.id);
+  return <div>{data.name}</div>;
+});
+// re-renders ONLY if 'data' prop reference changes (shallow compare)
+~~~
+
+**Failure mode 1 — new object/array/function props every render defeat it entirely:**
+~~~jsx
+// ❌ memo does nothing useful here - 'style' and 'onClick' are brand new every render
+function Parent() {
+  const [count, setCount] = useState(0);
+  return (
+    <ExpensiveRow
+      style={{ color: "red" }}           // new object every render
+      onClick={() => console.log(count)} // new function every render
+    />
+  );
+}
+// ExpensiveRow re-renders every time Parent renders anyway - memo comparison always fails
+~~~
+
+Fix: memoize the props with \`useMemo\`/\`useCallback\`, or hoist static values out of the render body:
+~~~jsx
+function Parent() {
+  const [count, setCount] = useState(0);
+  const style = useMemo(() => ({ color: "red" }), []);       // stable reference
+  const handleClick = useCallback(() => console.log(count), [count]); // stable unless count changes
+  return <ExpensiveRow style={style} onClick={handleClick} />;
+}
+~~~
+
+**Failure mode 2 — memoizing components that re-render for a good reason** (props genuinely change almost every time) adds the **cost of a comparison on every render for zero benefit** — the comparison itself isn't free, and for a component with many props it can outweigh just re-rendering a cheap component.
+
+**Failure mode 3 — memoizing a component whose children still re-render anyway.** \`React.memo\` only stops the memoized component itself from re-rendering; if it's not actually expensive but its *children* are the real cost and aren't independently memoized, wrapping the parent buys nothing.
+
+~~~text
+when memo HELPS:      component is genuinely expensive to render + props are usually stable
+when memo HURTS:       props are new objects/functions every render (comparison always fails, pure overhead)
+                       OR component is cheap (comparison cost > render cost)
+                       OR props change almost every render anyway (comparison never pays off)
+~~~
+
+Why it matters: "just wrap everything in \`React.memo\`" is a common junior instinct that can make things *worse* — every memoized component pays a comparison cost on every parent render, and if props aren't stabilized with \`useMemo\`/\`useCallback\`, that cost buys nothing. The React docs explicitly frame memo as an **opt-in performance escape hatch for measured bottlenecks**, not a default wrapper. Follow-up: "How do you know if memo is actually helping?" — profile with React DevTools Profiler's "why did this render" flag; if it still shows "props changed" every time despite wrapping in memo, the memoization isn't working and you need to stabilize the props themselves.`,
         },
       ],
       tip: "Mention bundle size reduction story (22%) — it's a perfect answer for performance questions.",
@@ -518,6 +1093,268 @@ small focused ones  -> smaller, cheaper updates
 ~~~
 
 Why it matters: many candidates know Context conceptually but miss its update model. Production angle: splitting a giant app context often removes avoidable list/feed re-renders. Follow-up: "Can Context replace Redux?" Sometimes, but not when you need fine-grained subscriptions at scale.`,
+        },
+        {
+          q: "What is prop drilling, and how can you avoid it?",
+          answer: `Prop drilling is passing a prop **through several intermediate components that don't use it themselves**, just to get it from a high-up ancestor down to a deeply nested descendant that does need it. It works, but it couples every component in the chain to a prop it doesn't care about, and makes refactoring painful (renaming/adding a prop means touching every intermediate level).
+
+~~~jsx
+// ❌ prop drilling: Layout and Sidebar don't use 'user', they just forward it
+function App() {
+  const [user, setUser] = useState({ name: "Raj" });
+  return <Layout user={user} />;
+}
+function Layout({ user }) {
+  return <Sidebar user={user} />; // just passing through
+}
+function Sidebar({ user }) {
+  return <UserBadge user={user} />; // just passing through
+}
+function UserBadge({ user }) {
+  return <span>{user.name}</span>; // finally used here
+}
+~~~
+
+~~~text
+App (has 'user')
+ └─ Layout (doesn't use it, just forwards)
+     └─ Sidebar (doesn't use it, just forwards)
+         └─ UserBadge (actually uses it)
+
+3 components touched just to deliver 1 prop to the 4th level
+~~~
+
+**Fix 1 — Context API** (best for infrequently-changing, broadly-needed data like auth/theme):
+~~~jsx
+const UserContext = createContext(null);
+
+function App() {
+  const [user, setUser] = useState({ name: "Raj" });
+  return (
+    <UserContext.Provider value={user}>
+      <Layout /> {/* no 'user' prop needed at all */}
+    </UserContext.Provider>
+  );
+}
+function Layout() { return <Sidebar />; }
+function Sidebar() { return <UserBadge />; }
+function UserBadge() {
+  const user = useContext(UserContext); // reads directly, skips every intermediate level
+  return <span>{user.name}</span>;
+}
+~~~
+
+**Fix 2 — component composition** (pass the already-rendered element down instead of raw data, so intermediate components don't need to know about the data shape at all):
+~~~jsx
+function App() {
+  const [user, setUser] = useState({ name: "Raj" });
+  return <Layout sidebar={<UserBadge user={user} />} />; // Layout just renders whatever it's given
+}
+function Layout({ sidebar }) {
+  return <div className="layout">{sidebar}</div>; // doesn't know or care what's inside
+}
+~~~
+
+**Fix 3 — external state management** (Redux, Zustand, Jotai) for state needed across many unrelated branches of the tree, with fine-grained subscriptions so components only re-render for the slice they actually read.
+
+Why it matters: prop drilling itself isn't "wrong" for one or two levels — introducing Context for every single prop is its own form of overengineering. The senior judgment call is recognizing **when** the chain gets long/wide enough (3+ levels, or fanning out to many siblings) that Context or composition genuinely pays for itself. Follow-up: "Isn't Context always better than prop drilling?" No — Context adds its own re-render considerations (see the Context performance pitfalls question) and can make data flow harder to trace; for a prop passed one level down, just pass the prop.`,
+        },
+        {
+          q: "Explain Higher-Order Components (HOCs), Render Props, and Hooks. Why are Hooks preferred today?",
+          answer: `All three solve the same problem — **reusing stateful logic across components** — but Hooks won because the other two patterns add structural overhead ("wrapper hell") that Hooks avoid entirely.
+
+**Higher-Order Component (HOC)** — a function that takes a component and returns a new component with extra props/behavior injected:
+~~~jsx
+function withAuth(WrappedComponent) {
+  return function AuthenticatedComponent(props) {
+    const user = useCurrentUser();
+    if (!user) return <LoginPrompt />;
+    return <WrappedComponent {...props} user={user} />;
+  };
+}
+
+const ProtectedDashboard = withAuth(Dashboard); // usage: <ProtectedDashboard />
+~~~
+
+**Render Props** — a component that takes a function as a prop (or as \`children\`) and calls it with the state/behavior it manages, letting the caller control rendering:
+~~~jsx
+function MouseTracker({ children }) {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  return (
+    <div onMouseMove={(e) => setPos({ x: e.clientX, y: e.clientY })}>
+      {children(pos)} {/* caller decides what to render with the position */}
+    </div>
+  );
+}
+
+// usage:
+<MouseTracker>{(pos) => <p>{pos.x}, {pos.y}</p>}</MouseTracker>
+~~~
+
+**Custom Hook** — the modern equivalent, just a function that uses other hooks:
+~~~jsx
+function useMousePosition() {
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const handler = (e) => setPos({ x: e.clientX, y: e.clientY });
+    window.addEventListener("mousemove", handler);
+    return () => window.removeEventListener("mousemove", handler);
+  }, []);
+  return pos;
+}
+
+// usage - no wrapper component, no render-prop indirection, just a function call:
+function Cursor() {
+  const pos = useMousePosition();
+  return <p>{pos.x}, {pos.y}</p>;
+}
+~~~
+
+Why Hooks are preferred:
+
+~~~text
+HOC:           extra component in the tree per HOC, props can silently collide/shadow,
+               hard to trace which HOC injected which prop ("wrapper hell" in DevTools)
+Render Props:  deep JSX nesting when combining several (callback-hell-like structure),
+               harder to read at a glance than a flat list of hook calls
+Custom Hooks:  NO extra component in the tree, explicit inputs/outputs (just function
+               args/return values), multiple hooks compose flatly with no nesting
+~~~
+
+~~~jsx
+// combining 3 cross-cutting concerns:
+// HOC:            withAuth(withTheme(withAnalytics(Component)))       <- wrapper hell
+// Render props:   <Auth>{u => <Theme>{t => <Analytics>{a => ...}}}    <- nesting hell
+// Hooks:           const user = useAuth(); const theme = useTheme(); const track = useAnalytics();  <- flat, clear
+~~~
+
+Why it matters: interviewers want to hear that you understand HOCs and render props aren't "wrong," just superseded — some older libraries (react-redux's \`connect\`, older React Router versions) still use HOCs, so recognizing the pattern in legacy code matters even if you'd write a hook today. Follow-up: "Do HOCs still have a place?" Occasionally — e.g. wrapping a component that must remain a class (like an error boundary) with shared logic, since hooks can't be used inside class components.`,
+        },
+        {
+          q: "Loading state (isLoading) with API calls.",
+          answer: `A single boolean \`isLoading\` is the naive starting point, but real API-call UIs need to represent more than two states — the common bug is conflating "loading," "error," "empty," and "loaded" into ad-hoc combinations of booleans that can contradict each other.
+
+**The naive (bug-prone) version:**
+~~~jsx
+function UserList() {
+  const [data, setData] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetchUsers()
+      .then(setData)
+      .catch(setError)
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  // bug risk: what if isLoading=false, error=null, AND data=null? (e.g. before the effect even ran)
+  // that's an invalid/ambiguous state these three independent booleans can drift into
+  if (isLoading) return <Spinner />;
+  if (error) return <ErrorMessage error={error} />;
+  return <List items={data} />;
+}
+~~~
+
+**The state-machine version** — model it as a single discriminated union so impossible states (e.g. "loading" AND "has error" at once) can't be represented at all:
+
+~~~jsx
+function useAsync(fetchFn, deps) {
+  const [state, setState] = useState({ status: "idle" });
+
+  useEffect(() => {
+    let active = true;
+    setState({ status: "loading" });
+
+    fetchFn()
+      .then((data) => { if (active) setState({ status: "success", data }); })
+      .catch((error) => { if (active) setState({ status: "error", error }); });
+
+    return () => { active = false; };
+  }, deps);
+
+  return state; // { status: "idle" | "loading" | "success" | "error", data?, error? }
+}
+
+function UserList() {
+  const state = useAsync(fetchUsers, []);
+
+  switch (state.status) {
+    case "idle":
+    case "loading": return <Spinner />;
+    case "error":   return <ErrorMessage error={state.error} />;
+    case "success": return state.data.length ? <List items={state.data} /> : <EmptyState />;
+  }
+}
+~~~
+
+~~~text
+naive booleans:     isLoading + error + data, independently settable -> 2³ combinations, some invalid
+state machine:       ONE status field -> exactly 4 valid states, no contradictions possible
+idle -> loading -> success (with data)
+               \\-> error (with error)
+~~~
+
+Why the state-machine shape matters: with independent booleans, nothing stops \`isLoading=true\` and \`error="failed"\` from being true simultaneously (a real bug — which UI wins?). A single \`status\` field makes that combination structurally impossible, and TypeScript discriminated unions can enforce it at compile time (\`data\` only exists when \`status === "success"\`).
+
+In practice, **React Query / SWR** give you this exact status model for free (\`isLoading\`, \`isError\`, \`isSuccess\`, plus \`isFetching\` for background refetches) — the hand-rolled version above is what interviewers want to see you can reason through, but you wouldn't re-implement it for every fetch in a real app.
+
+Why it matters: this question is really testing whether you think about the state *shape*, not just the visual loading spinner — production bugs from "loading spinner and error message showing at the same time" almost always trace back to independent boolean flags instead of a single status enum. Follow-up: "What about a background refetch (data already loaded, refetching in the background)?" — add a distinct \`isFetching\`/\`isRefetching\` flag separate from the initial \`isLoading\`, since you want to show stale data plus a subtle indicator, not a full-page spinner.`,
+        },
+        {
+          q: "What is React Router, and how does routing work?",
+          answer: `React Router is the standard client-side routing library for React — it maps **URL paths to components**, so navigating between "pages" updates the URL and swaps rendered components **without a full page reload**, keeping the SPA fast and stateful (e.g. scroll position/animations can persist across navigation in ways a full reload can't).
+
+~~~jsx
+import { BrowserRouter, Routes, Route, Link, useNavigate, useParams } from "react-router-dom";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <nav>
+        <Link to="/">Home</Link>
+        <Link to="/articles/42">Sample Article</Link>
+      </nav>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/articles/:id" element={<Article />} />
+        <Route path="*" element={<NotFound />} /> {/* catch-all for unmatched routes */}
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+function Article() {
+  const { id } = useParams();          // read the dynamic ":id" segment from the URL
+  const navigate = useNavigate();      // imperative navigation, e.g. after a form submit
+  return (
+    <div>
+      <h1>Article {id}</h1>
+      <button onClick={() => navigate("/")}>Back home</button>
+    </div>
+  );
+}
+~~~
+
+**How it works under the hood:** \`BrowserRouter\` uses the browser's **History API** (\`pushState\`/\`replaceState\`) instead of full navigations. Clicking a \`<Link>\` intercepts the click, calls \`history.pushState\` to change the URL bar **without** requesting a new HTML document from the server, and React Router then matches the new path against your \`<Route>\` definitions and renders the matching \`element\`.
+
+~~~text
+click <Link to="/articles/42">
+   -> preventDefault() on the native <a> click (no full page reload)
+   -> history.pushState(..., "/articles/42")   (URL bar updates)
+   -> Router re-matches routes against new path
+   -> renders <Article /> (the matched route's element)
+   -> componentry that already existed (nav, layout) is NOT remounted
+~~~
+
+Key concepts:
+- **Route matching** — \`/articles/:id\` is a dynamic segment; \`useParams()\` reads it. \`*\` catches unmatched paths (404).
+- **Nested routes** — a parent \`<Route>\` can render an \`<Outlet />\` where its matched child route renders, letting layouts wrap multiple pages without re-rendering the shared shell.
+- **Query params** — \`useSearchParams()\` reads/writes \`?key=value\` pairs independent of the path.
+- **Programmatic navigation** — \`useNavigate()\` for redirecting after actions (form submit, auth check) instead of requiring a \`<Link>\` click.
+
+Why it matters: this question checks the "client-side routing" mental model specifically — SPA navigation without a server round-trip for each "page." Follow-up: "How is this different from Next.js's file-based App Router?" — React Router matches routes you declare explicitly in JSX at runtime in the browser; Next.js derives routes from the file system and can render/fetch data on the **server** per route (SSR/RSC), which React Router alone (client-only) does not do.`,
         },
       ],
       tip: "Interviewers want to know you can choose the right tool. Context for global UI state, React Query for server data.",
